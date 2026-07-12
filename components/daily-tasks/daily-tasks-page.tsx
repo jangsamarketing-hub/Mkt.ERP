@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type StoreRow = {
   id: string;
-  week: "1주차" | "2주차" | "3주차" | "4주차" | "신규";
+  week: string;
   name: string;
 };
 
@@ -20,17 +20,47 @@ type DailyInboxTask = {
   completedAt?: string;
 };
 
+type CallHistory = {
+  id: string;
+  storeId: string;
+  storeName: string;
+  date: string;
+  createdAt: string;
+  summary: string;
+  candidates: string[];
+};
+
+type CallCandidate = {
+  id: string;
+  storeId: string;
+  task: string;
+  dueDate: string;
+};
+
 type DailyTasksPageProps = {
   stores: StoreRow[];
   initialDailyInboxTasks: DailyInboxTask[];
 };
 
-function getWeekClass(week: StoreRow["week"]) {
-  if (week === "1주차") return "week-badge week-1";
-  if (week === "2주차") return "week-badge week-2";
-  if (week === "3주차") return "week-badge week-3";
-  if (week === "4주차") return "week-badge week-4";
+function getWeekClass(week: string) {
+  if (week.includes("1")) return "week-badge week-1";
+  if (week.includes("2")) return "week-badge week-2";
+  if (week.includes("3")) return "week-badge week-3";
+  if (week.includes("4")) return "week-badge week-4";
   return "week-badge week-new";
+}
+
+function extractCallCandidates(text: string, storeName: string) {
+  const source = text.includes("[핵심업무후보]")
+    ? text.split("[핵심업무후보]")[1]?.split("---")[0] ?? text
+    : text;
+
+  return source
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^\s*[-*•]\s*/, "").trim())
+    .filter((line) => line.length > 8 && !line.startsWith("#"))
+    .slice(0, 8)
+    .map((line) => (line.startsWith("[") ? line : `[${storeName}] ${line}`));
 }
 
 export function DailyTasksPage({ stores, initialDailyInboxTasks }: DailyTasksPageProps) {
@@ -40,14 +70,22 @@ export function DailyTasksPage({ stores, initialDailyInboxTasks }: DailyTasksPag
   const [taskName, setTaskName] = useState("사장님 요청: 신메뉴 사진 교체");
   const [quickTaskName, setQuickTaskName] = useState("");
   const [dueDate, setDueDate] = useState(today);
+  const [callDate, setCallDate] = useState(today);
+  const [callText, setCallText] = useState("");
+  const [callCandidates, setCallCandidates] = useState<CallCandidate[]>([]);
+  const [callHistories, setCallHistories] = useState<CallHistory[]>([]);
+
   const activeTasks = inboxTasks.filter((task) => !task.completed);
   const completedTasks = inboxTasks.filter((task) => task.completed);
+  const selectedStore = stores.find((store) => store.id === selectedStoreId) ?? stores[0];
+
   const storeTaskCounts = stores.map((store) => ({
     store,
     total: inboxTasks.filter((task) => task.storeId === store.id).length,
     active: activeTasks.filter((task) => task.storeId === store.id).length,
   }));
   const cautionStores = storeTaskCounts.filter((item) => item.total === 0);
+
   const getStoreName = (storeId: string) => stores.find((store) => store.id === storeId)?.name ?? "업체 미지정";
   const getDeadlineClass = (date: string) => (date < today ? "overdue" : date === today ? "today" : "");
   const getPriorityLabel = (task: DailyInboxTask) => {
@@ -65,12 +103,20 @@ export function DailyTasksPage({ stores, initialDailyInboxTasks }: DailyTasksPag
 
   useEffect(() => {
     const savedTasks = window.localStorage.getItem("erp:daily-inbox-tasks");
-    if (!savedTasks) return;
-    try {
-      const parsedTasks = JSON.parse(savedTasks) as DailyInboxTask[];
-      setInboxTasks(parsedTasks);
-    } catch {
-      window.localStorage.removeItem("erp:daily-inbox-tasks");
+    const savedCallHistories = window.localStorage.getItem("erp:call-histories");
+    if (savedTasks) {
+      try {
+        setInboxTasks(JSON.parse(savedTasks) as DailyInboxTask[]);
+      } catch {
+        window.localStorage.removeItem("erp:daily-inbox-tasks");
+      }
+    }
+    if (savedCallHistories) {
+      try {
+        setCallHistories(JSON.parse(savedCallHistories) as CallHistory[]);
+      } catch {
+        window.localStorage.removeItem("erp:call-histories");
+      }
     }
   }, []);
 
@@ -78,15 +124,19 @@ export function DailyTasksPage({ stores, initialDailyInboxTasks }: DailyTasksPag
     window.localStorage.setItem("erp:daily-inbox-tasks", JSON.stringify(inboxTasks));
   }, [inboxTasks]);
 
-  const addInboxTask = () => {
-    const trimmedTask = taskName.trim();
-    if (!trimmedTask || !selectedStoreId) return;
+  useEffect(() => {
+    window.localStorage.setItem("erp:call-histories", JSON.stringify(callHistories));
+  }, [callHistories]);
+
+  const createTask = (storeId: string, task: string, taskDueDate: string) => {
+    const trimmedTask = task.trim();
+    if (!trimmedTask || !storeId) return;
     setInboxTasks((current) => [
       {
-        id: `inbox-${Date.now()}`,
-        storeId: selectedStoreId,
+        id: `inbox-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        storeId,
         task: trimmedTask,
-        dueDate,
+        dueDate: taskDueDate,
         urgent: false,
         important: false,
         completed: false,
@@ -94,25 +144,15 @@ export function DailyTasksPage({ stores, initialDailyInboxTasks }: DailyTasksPag
       },
       ...current,
     ]);
+  };
+
+  const addInboxTask = () => {
+    createTask(selectedStoreId, taskName, dueDate);
     setTaskName("");
   };
 
   const addQuickTask = () => {
-    const trimmedTask = quickTaskName.trim();
-    if (!trimmedTask || !selectedStoreId) return;
-    setInboxTasks((current) => [
-      {
-        id: `inbox-${Date.now()}`,
-        storeId: selectedStoreId,
-        task: trimmedTask,
-        dueDate,
-        urgent: false,
-        important: false,
-        completed: false,
-        createdAt: today,
-      },
-      ...current,
-    ]);
+    createTask(selectedStoreId, quickTaskName, dueDate);
     setQuickTaskName("");
   };
 
@@ -128,6 +168,41 @@ export function DailyTasksPage({ stores, initialDailyInboxTasks }: DailyTasksPag
     setInboxTasks((current) => current.map((task) => (task.id === id ? { ...task, completed: true, completedAt: today } : task)));
   };
 
+  const saveCallHistoryAndExtractCandidates = () => {
+    if (!callText.trim() || !selectedStore) return;
+    const candidates = extractCallCandidates(callText, selectedStore.name);
+    const history: CallHistory = {
+      id: `call-${Date.now()}`,
+      storeId: selectedStore.id,
+      storeName: selectedStore.name,
+      date: callDate,
+      createdAt: new Date().toLocaleString("ko-KR"),
+      summary: callText,
+      candidates,
+    };
+    setCallHistories((histories) => [history, ...histories]);
+    setCallCandidates(candidates.map((candidate, index) => ({
+      id: `candidate-${Date.now()}-${index}`,
+      storeId: selectedStore.id,
+      task: candidate,
+      dueDate,
+    })));
+  };
+
+  const updateCandidate = (id: string, patch: Partial<CallCandidate>) => {
+    setCallCandidates((candidates) => candidates.map((candidate) => (candidate.id === id ? { ...candidate, ...patch } : candidate)));
+  };
+
+  const addCandidateTask = (candidate: CallCandidate) => {
+    createTask(candidate.storeId, candidate.task, candidate.dueDate);
+    setCallCandidates((candidates) => candidates.filter((item) => item.id !== candidate.id));
+  };
+
+  const callHistoriesByStore = useMemo(
+    () => callHistories.filter((history) => history.storeId === selectedStoreId).slice(0, 5),
+    [callHistories, selectedStoreId],
+  );
+
   return (
     <>
       <div className="page-header">
@@ -142,6 +217,7 @@ export function DailyTasksPage({ stores, initialDailyInboxTasks }: DailyTasksPag
         <button type="button">업무 매트릭스</button>
         <button type="button">업체 관리</button>
       </div>
+
       <section className="panel daily-command">
         <div>
           <h2>일일 대시보드</h2>
@@ -157,10 +233,57 @@ export function DailyTasksPage({ stores, initialDailyInboxTasks }: DailyTasksPag
           <button className="btn btn-primary" onClick={addQuickTask} type="button">+ 업무 추가</button>
         </div>
       </section>
+
+      <section className="panel call-upload-panel">
+        <div className="section-headline">
+          <div>
+            <h2>통화 데이터 업로드</h2>
+            <p className="plain-text">GPT 통화 요약 전체본을 붙여넣으면 업체 히스토리와 핵심 업무 후보를 만듭니다.</p>
+          </div>
+          <button className="btn btn-primary" onClick={saveCallHistoryAndExtractCandidates} type="button">핵심 업무 후보 보기</button>
+        </div>
+        <div className="call-upload-grid">
+          <select value={selectedStoreId} onChange={(event) => setSelectedStoreId(event.target.value)}>
+            {stores.map((store) => (
+              <option key={store.id} value={store.id}>{store.name}</option>
+            ))}
+          </select>
+          <input type="date" value={callDate} onChange={(event) => setCallDate(event.target.value)} />
+        </div>
+        <textarea
+          className="call-textarea"
+          placeholder="[핵심업무후보] 섹션이 있는 통화 요약 텍스트를 붙여넣으세요."
+          value={callText}
+          onChange={(event) => setCallText(event.target.value)}
+        />
+        {callCandidates.length > 0 && (
+          <div className="call-candidate-list">
+            <h3>핵심 업무 후보 {callCandidates.length}개</h3>
+            {callCandidates.map((candidate) => (
+              <div className="call-candidate-row" key={candidate.id}>
+                <input value={candidate.task} onChange={(event) => updateCandidate(candidate.id, { task: event.target.value })} />
+                <input type="date" value={candidate.dueDate} onChange={(event) => updateCandidate(candidate.id, { dueDate: event.target.value })} />
+                <button className="btn btn-primary" onClick={() => addCandidateTask(candidate)} type="button">업무 추가</button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="call-history-list">
+          <h3>{selectedStore?.name ?? "업체"} 통화 히스토리</h3>
+          {callHistoriesByStore.map((history) => (
+            <details className="call-history-card" key={history.id}>
+              <summary>{history.date} · {history.createdAt} · 후보 {history.candidates.length}개</summary>
+              <pre>{history.summary}</pre>
+            </details>
+          ))}
+          {callHistoriesByStore.length === 0 && <p className="plain-text">아직 선택한 업체의 통화 히스토리가 없습니다.</p>}
+        </div>
+      </section>
+
       <section className="panel">
         <div className="section-headline">
           <h2>업무 수집함</h2>
-          <span className="muted-note">업체 선택 + 업무명 입력 후 수집함에 쌓이고, 🚨/★ 토글로 분류합니다.</span>
+          <span className="muted-note">업체 선택 + 업무명 입력 후 수집함에 쌓이고, 사이렌/별로 분류합니다.</span>
         </div>
         <div className="task-capture-row">
           <select value={selectedStoreId} onChange={(event) => setSelectedStoreId(event.target.value)}>
@@ -185,6 +308,7 @@ export function DailyTasksPage({ stores, initialDailyInboxTasks }: DailyTasksPag
           ))}
         </div>
       </section>
+
       <div className="daily-layout wide">
         <section className="panel">
           <div className="section-headline">
@@ -227,6 +351,7 @@ export function DailyTasksPage({ stores, initialDailyInboxTasks }: DailyTasksPag
           </div>
         </section>
       </div>
+
       <section className="panel">
         <h2>업체 관리 · 업무 매칭</h2>
         <div className="client-task-list">
@@ -259,9 +384,10 @@ export function DailyTasksPage({ stores, initialDailyInboxTasks }: DailyTasksPag
             <h3>관리 요망 매장</h3>
             {cautionStores.length === 0 && <p className="plain-text">현재 모든 매장에 추가 업무 또는 히스토리가 있습니다.</p>}
             {cautionStores.map(({ store }) => (
-              <div className="caution-store-row" key={store.id}>
+              <div className="history-row" key={store.id}>
                 <strong>{store.name}</strong>
-                <span>추가 업무/소통 히스토리 없음</span>
+                <span>최근 추가 약속 업무 없음</span>
+                <em>관심 필요</em>
               </div>
             ))}
           </div>

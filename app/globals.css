@@ -397,6 +397,14 @@ a {
   text-decoration: underline;
 }
 
+.sort-arrow {
+  display: inline-block;
+  margin-left: 4px;
+  color: var(--blue);
+  font-size: 10px;
+  line-height: 1;
+}
+
 .ops-table td,
 .ops-table th {
   padding: 10px 12px;
@@ -1694,14 +1702,82 @@ a {
 }
 
 .toggle-on.danger {
-  border-color: #fecdd3;
-  background: #ffe4e6;
+  border-color: #7f1d1d;
+  background: #991b1b;
+  color: #fff;
 }
 
 .toggle-on.star {
   border-color: #fde68a;
   background: #fef3c7;
   color: #b45309;
+}
+
+.call-upload-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.call-upload-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 160px;
+  gap: 8px;
+}
+
+.call-upload-grid select,
+.call-upload-grid input,
+.call-textarea,
+.call-candidate-row input {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  padding: 10px;
+}
+
+.call-textarea {
+  min-height: 170px;
+  resize: vertical;
+  font-family: inherit;
+  line-height: 1.6;
+}
+
+.call-candidate-list,
+.call-history-list {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #eff6ff;
+  padding: 12px;
+}
+
+.call-candidate-row {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) 150px 96px;
+  gap: 8px;
+  align-items: center;
+}
+
+.call-history-card {
+  border: 1px solid #dbe4f0;
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px;
+}
+
+.call-history-card summary {
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.call-history-card pre {
+  margin: 10px 0 0;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .goal-planner {
@@ -2214,13 +2290,93 @@ a {
 
 .setup-check-row {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) 90px 80px 150px 80px;
+  grid-template-columns: minmax(180px, 1fr) 90px 80px 150px 80px 70px;
   align-items: center;
   gap: 8px;
   border: 1px solid #e5e7eb;
   border-radius: 7px;
   background: #fff;
   padding: 9px;
+}
+
+.month-tabs {
+  display: flex;
+  gap: 6px;
+  margin: 12px 0;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.month-tabs button {
+  flex: 0 0 auto;
+  border: 1px solid #cfe0ff;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--blue);
+  padding: 6px 11px;
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.month-tabs button.active {
+  background: var(--blue);
+  color: #fff;
+}
+
+.setup-label-input {
+  min-height: 34px;
+  border: 1px solid #dbe4f0;
+  border-radius: 6px;
+  padding: 0 9px;
+  font-weight: 900;
+}
+
+.setup-photo-upload {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) 180px 260px;
+  gap: 10px;
+  align-items: center;
+  margin-top: 14px;
+  border: 1px dashed #93c5fd;
+  border-radius: 8px;
+  background: #eff6ff;
+  padding: 12px;
+}
+
+.setup-photo-upload input {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  padding: 9px;
+}
+
+.setup-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.setup-photo-card {
+  display: grid;
+  gap: 7px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  padding: 9px;
+}
+
+.setup-photo-card img {
+  width: 100%;
+  height: 120px;
+  border-radius: 6px;
+  border: 1px solid #eef1f5;
+  object-fit: cover;
+}
+
+.setup-photo-card span {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .setup-check-row.overdue {

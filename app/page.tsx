@@ -799,6 +799,10 @@ function Dashboard({ setView, rows = stores }: { setView: (view: ViewId) => void
     setSortDirection("asc");
   };
 
+  const sortArrow = (mode: DashboardSort) => (
+    sortMode === mode ? <span className="sort-arrow" aria-hidden="true">{sortDirection === "asc" ? "▲" : "▼"}</span> : null
+  );
+
   return (
     <>
       <PageHeader
@@ -851,12 +855,12 @@ function Dashboard({ setView, rows = stores }: { setView: (view: ViewId) => void
         <table className="ops-table prototype-table">
           <thead>
             <tr>
-              <th><button className="table-sort" onClick={() => toggleSort("week")} type="button">주차 {sortMode === "week" ? sortDirection : ""}</button></th>
-              <th><button className="table-sort" onClick={() => toggleSort("store")} type="button">업체명 {sortMode === "store" ? sortDirection : ""}</button></th>
-              <th><button className="table-sort" onClick={() => toggleSort("manager")} type="button">담당자 {sortMode === "manager" ? sortDirection : ""}</button></th>
-              <th><button className="table-sort" onClick={() => toggleSort("bizMoney")} type="button">비즈머니 {sortMode === "bizMoney" ? sortDirection : ""}</button></th>
-              <th><button className="table-sort" onClick={() => toggleSort("inflow")} type="button">네이버 유입 / 4주 그래프 {sortMode === "inflow" ? sortDirection : ""}</button></th>
-              <th><button className="table-sort" onClick={() => toggleSort("sales")} type="button">매출 {sortMode === "sales" ? sortDirection : ""}</button></th>
+              <th><button className="table-sort" onClick={() => toggleSort("week")} type="button">주차 {sortArrow("week")}</button></th>
+              <th><button className="table-sort" onClick={() => toggleSort("store")} type="button">업체명 {sortArrow("store")}</button></th>
+              <th><button className="table-sort" onClick={() => toggleSort("manager")} type="button">담당자 {sortArrow("manager")}</button></th>
+              <th><button className="table-sort" onClick={() => toggleSort("bizMoney")} type="button">비즈머니 {sortArrow("bizMoney")}</button></th>
+              <th><button className="table-sort" onClick={() => toggleSort("inflow")} type="button">네이버 유입 / 4주 그래프 {sortArrow("inflow")}</button></th>
+              <th><button className="table-sort" onClick={() => toggleSort("sales")} type="button">매출 {sortArrow("sales")}</button></th>
               <th>업무현황</th>
               <th>바로가기</th>
             </tr>

@@ -22,6 +22,15 @@ type SetupItem = {
   completed: boolean;
 };
 
+type SetupPhoto = {
+  id: string;
+  month: string;
+  date: string;
+  title: string;
+  fileName: string;
+  dataUrl: string;
+};
+
 type ChannelChecks = {
   naver: boolean;
   daangn: boolean;
@@ -112,6 +121,21 @@ const defaultStoreProfile: StoreProfile = {
   ],
   memo: "--260712--\n정보안내문에서 받은 계정과 내부 등록 정보를 함께 관리합니다.",
 };
+
+const defaultSetupItems: SetupItem[] = [
+  { id: "cover-photo", label: "대문사진", percent: 70, dueDate: "2026-07-15", completed: false },
+  { id: "cover-video", label: "대문영상", percent: 60, dueDate: "2026-07-15", completed: false },
+  { id: "main-keyword", label: "대표키워드", percent: 45, dueDate: "2026-07-16", completed: false },
+  { id: "description", label: "상세설명", percent: 80, dueDate: "2026-07-17", completed: false },
+  { id: "route-hook", label: "찾아오는길 후킹", percent: 90, dueDate: "2026-07-15", completed: true },
+  { id: "coupon-hook", label: "쿠폰 후킹", percent: 80, dueDate: "2026-07-20", completed: false },
+  { id: "notice-hook", label: "공지사항 후킹", percent: 50, dueDate: "2026-07-18", completed: false },
+  { id: "top-menu", label: "메뉴 상단 3개", percent: 35, dueDate: "2026-07-18", completed: false },
+  { id: "menu-seo-aeo", label: "메뉴 SEO AEO", percent: 25, dueDate: "2026-07-12", completed: false },
+  { id: "set-bait-menu", label: "세트, 미끼메뉴", percent: 30, dueDate: "2026-07-19", completed: false },
+];
+
+const setupMonthOptions = ["26.1월", "26.2월", "26.3월", "26.4월", "26.5월", "26.6월", "26.7월", "26.8월", "26.9월", "26.10월", "26.11월", "26.12월"];
 
 const defaultManagers = ["박상일(경기)", "박규상", "강정원", "김재영"];
 const industryOptions = [
@@ -252,18 +276,10 @@ export function StoreInfoPage({
   const [selectedMemoDate, setSelectedMemoDate] = useState("");
   const [managerOptions, setManagerOptions] = useState(defaultManagers);
   const [newManager, setNewManager] = useState("");
-  const [setupItems, setSetupItems] = useState<SetupItem[]>([
-    { id: "cover-photo", label: "대문사진", percent: 70, dueDate: "2026-07-15", completed: false },
-    { id: "cover-video", label: "대문영상", percent: 60, dueDate: "2026-07-15", completed: false },
-    { id: "main-keyword", label: "대표키워드", percent: 45, dueDate: "2026-07-16", completed: false },
-    { id: "description", label: "상세설명", percent: 80, dueDate: "2026-07-17", completed: false },
-    { id: "route-hook", label: "찾아오는길 후킹", percent: 90, dueDate: "2026-07-15", completed: true },
-    { id: "coupon-hook", label: "쿠폰 후킹", percent: 80, dueDate: "2026-07-20", completed: false },
-    { id: "notice-hook", label: "공지사항 후킹", percent: 50, dueDate: "2026-07-18", completed: false },
-    { id: "top-menu", label: "메뉴 상단 3개", percent: 35, dueDate: "2026-07-18", completed: false },
-    { id: "menu-seo-aeo", label: "메뉴 SEO AEO", percent: 25, dueDate: "2026-07-12", completed: false },
-    { id: "set-bait-menu", label: "세트, 미끼메뉴", percent: 30, dueDate: "2026-07-19", completed: false },
-  ]);
+  const [selectedSetupMonth, setSelectedSetupMonth] = useState("26.7월");
+  const [setupItemsByMonth, setSetupItemsByMonth] = useState<Record<string, SetupItem[]>>({ "26.7월": defaultSetupItems });
+  const [setupPhotos, setSetupPhotos] = useState<SetupPhoto[]>([]);
+  const [setupPhotoTitle, setSetupPhotoTitle] = useState("비포 화면");
   const [channelChecks, setChannelChecks] = useState<ChannelChecks>({
     naver: true,
     daangn: false,
@@ -273,14 +289,19 @@ export function StoreInfoPage({
     influencerDate: "2026-05-01",
     photoHistory: ["2026-06-20"],
     influencerHistory: ["2026-05-01"],
-  });  const [savedAt, setSavedAt] = useState("");
+  });
+  const [savedAt, setSavedAt] = useState("");
   const [selectedWeek, setSelectedWeek] = useState<1 | 2 | 3 | 4>(4);
+  const setupItems = setupItemsByMonth[selectedSetupMonth] ?? defaultSetupItems;
+  const monthlySetupPhotos = setupPhotos.filter((photo) => photo.month === selectedSetupMonth);
   const ownerReportUrl = useMemo(() => `https://장사닥터.com/companies/${profile.placeMid}/detail`, [profile.placeMid]);
   const informationUrl = useMemo(() => `https://장사닥터.com/information-questions/${profile.placeMid}`, [profile.placeMid]);
 
   useEffect(() => {
     const savedProfile = window.localStorage.getItem("erp:store-profile");
     const savedTasks = window.localStorage.getItem("erp:store-weekly-tasks");
+    const savedSetupItems = window.localStorage.getItem("erp:setup-items-by-month");
+    const savedSetupPhotos = window.localStorage.getItem("erp:setup-photos");
     if (savedProfile) {
       try {
         setProfile({ ...defaultStoreProfile, ...(JSON.parse(savedProfile) as StoreProfile) });
@@ -295,7 +316,29 @@ export function StoreInfoPage({
         window.localStorage.removeItem("erp:store-weekly-tasks");
       }
     }
+    if (savedSetupItems) {
+      try {
+        setSetupItemsByMonth(JSON.parse(savedSetupItems) as Record<string, SetupItem[]>);
+      } catch {
+        window.localStorage.removeItem("erp:setup-items-by-month");
+      }
+    }
+    if (savedSetupPhotos) {
+      try {
+        setSetupPhotos(JSON.parse(savedSetupPhotos) as SetupPhoto[]);
+      } catch {
+        window.localStorage.removeItem("erp:setup-photos");
+      }
+    }
   }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("erp:setup-items-by-month", JSON.stringify(setupItemsByMonth));
+  }, [setupItemsByMonth]);
+
+  useEffect(() => {
+    window.localStorage.setItem("erp:setup-photos", JSON.stringify(setupPhotos));
+  }, [setupPhotos]);
 
   const saveProfile = () => {
     window.localStorage.setItem("erp:store-profile", JSON.stringify(profile));
@@ -421,7 +464,65 @@ export function StoreInfoPage({
   );
 
   const updateSetupItem = (id: string, patch: Partial<SetupItem>) => {
-    setSetupItems((items) => items.map((item) => (item.id === id ? { ...item, ...patch } : item)));
+    setSetupItemsByMonth((months) => {
+      const items = months[selectedSetupMonth] ?? defaultSetupItems;
+      return {
+        ...months,
+        [selectedSetupMonth]: items.map((item) => (item.id === id ? { ...item, ...patch } : item)),
+      };
+    });
+  };
+
+  const addSetupItem = () => {
+    setSetupItemsByMonth((months) => {
+      const items = months[selectedSetupMonth] ?? defaultSetupItems;
+      return {
+        ...months,
+        [selectedSetupMonth]: [
+          ...items,
+          {
+            id: `setup-${Date.now()}`,
+            label: "새 세팅 항목",
+            percent: 0,
+            dueDate: "2026-07-20",
+            completed: false,
+          },
+        ],
+      };
+    });
+  };
+
+  const deleteSetupItem = (id: string) => {
+    setSetupItemsByMonth((months) => {
+      const items = months[selectedSetupMonth] ?? defaultSetupItems;
+      return {
+        ...months,
+        [selectedSetupMonth]: items.filter((item) => item.id !== id),
+      };
+    });
+  };
+
+  const addSetupPhoto = (file: File | undefined) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setSetupPhotos((photos) => [
+        {
+          id: `setup-photo-${Date.now()}`,
+          month: selectedSetupMonth,
+          date: new Date().toISOString().slice(0, 10),
+          title: setupPhotoTitle.trim() || "비포 화면",
+          fileName: file.name,
+          dataUrl: String(reader.result ?? ""),
+        },
+        ...photos,
+      ]);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const deleteSetupPhoto = (id: string) => {
+    setSetupPhotos((photos) => photos.filter((photo) => photo.id !== id));
   };
 
   const influencerDays = Math.floor((Date.now() - new Date(`${channelChecks.influencerDate}T00:00:00`).getTime()) / 86400000);
@@ -566,12 +667,28 @@ export function StoreInfoPage({
       </section>
 
       <section className="panel">
-        <h2>매장 세팅 상태 체크</h2>
-        <p className="plain-text">세팅 진행률, 수정 마감일, 광고/촬영/먹플루언서 진행 이력을 내부 관리합니다.</p>
+        <div className="section-headline">
+          <div>
+            <h2>매장 세팅 상태 체크</h2>
+            <p className="plain-text">월별 세팅 진행률, 수정 마감일, 광고/촬영/먹플루언서 진행 이력을 내부 관리합니다.</p>
+          </div>
+          <button className="btn btn-primary" onClick={addSetupItem} type="button">세팅 항목 추가</button>
+        </div>
+        <div className="month-tabs" aria-label="월별 세팅 체크">
+          {setupMonthOptions.map((month) => (
+            <button className={month === selectedSetupMonth ? "active" : ""} key={month} onClick={() => setSelectedSetupMonth(month)} type="button">
+              {month}
+            </button>
+          ))}
+        </div>
         <div className="setup-check-grid">
           {setupItems.map((item) => (
             <div className={`setup-check-row ${getDueClass(item.dueDate, item.completed)}`} key={item.id}>
-              <strong>{item.label}</strong>
+              <input
+                className="setup-label-input"
+                value={item.label}
+                onChange={(event) => updateSetupItem(item.id, { label: event.target.value })}
+              />
               <select value={item.percent} onChange={(event) => updateSetupItem(item.id, { percent: Number(event.target.value) })}>
                 {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((percent) => (
                   <option key={percent} value={percent}>{percent}%</option>
@@ -583,8 +700,28 @@ export function StoreInfoPage({
                 <input checked={item.completed} onChange={(event) => updateSetupItem(item.id, { completed: event.target.checked })} type="checkbox" />
                 완료
               </label>
+              <button className="btn btn-light" onClick={() => deleteSetupItem(item.id)} type="button">삭제</button>
             </div>
           ))}
+        </div>
+        <div className="setup-photo-upload">
+          <div>
+            <h3>{selectedSetupMonth} 비포/수정 히스토리 사진</h3>
+            <p className="plain-text">1주차 비포, 3주차 검수 화면처럼 스크린샷을 날짜 기준으로 쌓아둡니다.</p>
+          </div>
+          <input value={setupPhotoTitle} onChange={(event) => setSetupPhotoTitle(event.target.value)} placeholder="사진 제목" />
+          <input accept="image/*" onChange={(event) => addSetupPhoto(event.target.files?.[0])} type="file" />
+        </div>
+        <div className="setup-photo-grid">
+          {monthlySetupPhotos.map((photo) => (
+            <div className="setup-photo-card" key={photo.id}>
+              {photo.dataUrl && <img alt={photo.title} src={photo.dataUrl} />}
+              <strong>{photo.title}</strong>
+              <span>{photo.date} · {photo.fileName}</span>
+              <button className="btn btn-light" onClick={() => deleteSetupPhoto(photo.id)} type="button">삭제</button>
+            </div>
+          ))}
+          {monthlySetupPhotos.length === 0 && <p className="plain-text">아직 이 월에 등록된 히스토리 사진이 없습니다.</p>}
         </div>
         <div className="channel-check-grid">
           {[
