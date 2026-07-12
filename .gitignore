@@ -13,3 +13,6 @@ pnpm-debug.log*
 dev-server.log
 dev-server.err.log
 _incoming/
+
+.vercel
+.env*
