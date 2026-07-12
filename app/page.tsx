@@ -274,6 +274,7 @@ type PlaceCsvUpload = {
   uploadedAt: string;
   weekStart: string;
   weekEnd: string;
+  summary: Record<string, number>;
   keywordRows: (string | number)[][];
   channelRows: (string | number)[][];
 };
@@ -538,8 +539,36 @@ function getUploadWeekRange(dateText: string) {
 }
 
 function parseLooseCsvRows(csvText: string) {
-  const rows = csvText
-    .split(/\r?\n/)
+  const lines = csvText.split(/\r?\n/);
+  const sectionRows = (sectionTitle: string) => {
+    const start = lines.findIndex((line) => line.trim() === sectionTitle);
+    if (start < 0) return [];
+    const end = lines.findIndex((line, index) => index > start && /^\[.+\]$/.test(line.trim()));
+    return lines.slice(start + 1, end < 0 ? undefined : end).filter(Boolean);
+  };
+  const toCells = (line: string) => line.split(/\t|,/).map((cell) => cell.replace(/^"|"$/g, "").trim());
+  const metricSummary = sectionRows("[1. 리포트 요약 지표]")
+    .map(toCells)
+    .reduce<Record<string, number>>((summary, cells) => {
+      const key = cells[0];
+      const current = Number(cells[2]);
+      if (key && Number.isFinite(current)) summary[key] = current;
+      return summary;
+    }, {});
+  const keywordRows = sectionRows("[2. 유입 키워드]")
+    .map(toCells)
+    .filter((cells) => cells[0] && Number.isFinite(Number(cells[1])))
+    .map((cells) => [cells[0], Number(cells[1]), 0, cells[2] ?? ""]);
+  const channelRows = sectionRows("[3. 유입 채널]")
+    .map(toCells)
+    .filter((cells) => cells[0] && Number.isFinite(Number(cells[1])))
+    .map((cells) => [cells[0], Number(cells[1]), 0, ""]);
+
+  if (keywordRows.length || channelRows.length) {
+    return { summary: metricSummary, keywordRows, channelRows };
+  }
+
+  const rows = lines
     .map((line) => line.split(/\t|,/).map((cell) => cell.replace(/^"|"$/g, "").trim()).filter(Boolean))
     .filter((cells) => cells.length >= 2);
 
@@ -554,6 +583,7 @@ function parseLooseCsvRows(csvText: string) {
     .filter((row): row is (string | number)[] => Boolean(row));
 
   return {
+    summary: metricSummary,
     keywordRows: metricRows.slice(0, 80),
     channelRows: metricRows.slice(80, 100),
   };
@@ -1131,6 +1161,7 @@ function InflowPage() {
   const latestUpload = selectedUploads[0];
   const displayedKeywords = latestUpload?.keywordRows.length ? latestUpload.keywordRows : inflowKeywords;
   const displayedChannels = latestUpload?.channelRows.length ? latestUpload.channelRows : inflowChannels;
+  const uploadedSummary = latestUpload?.summary ?? {};
   const analysisRows = activeAnalysisRows.length ? activeAnalysisRows : makeKeywordAnalysisRows(generatedKeywords).slice(0, 20);
   const storeGoldenJobs = goldenKeywordJobs.filter((job) => job.storeId === selectedInflowStoreId);
 
@@ -1191,6 +1222,7 @@ function InflowPage() {
       weekEnd,
       keywordRows: parsed.keywordRows,
       channelRows: parsed.channelRows,
+      summary: parsed.summary,
     };
     setPlaceCsvUploads((uploads) => [upload, ...uploads]);
   };
@@ -1285,10 +1317,10 @@ function InflowPage() {
         </div>
       </section>
       <div className="detail-grid">
-        <MetricCard label="플레이스 유입" value={hasSelectedStore ? "2,326" : "데이터 없음"} tone={hasSelectedStore ? "red" : undefined} />
-        <MetricCard label="예약·주문 신청" value={hasSelectedStore ? "6" : "데이터 없음"} />
-        <MetricCard label="스마트콜 통화" value={hasSelectedStore ? "0" : "데이터 없음"} tone={hasSelectedStore ? "yellow" : undefined} />
-        <MetricCard label="리뷰 등록" value={hasSelectedStore ? "29" : "데이터 없음"} />
+        <MetricCard label="플레이스 유입" value={hasSelectedStore ? formatNumber(uploadedSummary.placeInflow ?? 2326) : "데이터 없음"} tone={hasSelectedStore ? "red" : undefined} />
+        <MetricCard label="예약·주문 신청" value={hasSelectedStore ? formatNumber(uploadedSummary.reservationOrder ?? 6) : "데이터 없음"} />
+        <MetricCard label="스마트콜 통화" value={hasSelectedStore ? formatNumber(uploadedSummary.smartCall ?? 0) : "데이터 없음"} tone={hasSelectedStore ? "yellow" : undefined} />
+        <MetricCard label="리뷰 등록" value={hasSelectedStore ? formatNumber(uploadedSummary.reviewRegister ?? 29) : "데이터 없음"} />
       </div>
       {hasSelectedStore ? (
         <>
@@ -2024,7 +2056,7 @@ export default function HomePage() {
       case "owner":
         return <OwnerReportPage />;
       case "store":
-        return <StoreInfoPage weeklyTasks={weeklyTasks} onBack={goBack} setView={navigateTo} onSaveStore={saveStoreRow} />;
+        return <StoreInfoPage stores={storeRows} weeklyTasks={weeklyTasks} onBack={goBack} setView={navigateTo} onSaveStore={saveStoreRow} />;
       case "questionnaire":
         return <QuestionnairePage />;
       case "weeklyFlow":

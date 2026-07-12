@@ -44,6 +44,24 @@ type ChannelChecks = {
 
 type StoreViewId = "dashboard" | "owner" | "questionnaire";
 
+type StoreRow = {
+  id: string;
+  name: string;
+  manager: string;
+  week: string;
+  memo: string;
+};
+
+type GoldenKeywordJob = {
+  id: string;
+  storeId: string;
+  storeName: string;
+  createdAt: string;
+  keywordCount: number;
+  resultCount: number;
+  rows: { keyword: string; volume: number; pageCount: number; estimatedStores: number; result: string }[];
+};
+
 type StoreProfile = {
   clientName: string;
   storeName: string;
@@ -264,13 +282,17 @@ export function StoreInfoPage({
   onBack,
   setView,
   onSaveStore,
+  stores,
 }: {
   weeklyTasks: TaskItem[];
   onBack: () => void;
   setView: (view: StoreViewId) => void;
   onSaveStore?: (profile: Pick<StoreProfile, "storeName" | "manager" | "contractPeriod" | "memo">) => void;
+  stores?: StoreRow[];
 }) {
   const [profile, setProfile] = useState<StoreProfile>(defaultStoreProfile);
+  const [selectedStoreId, setSelectedStoreId] = useState(stores?.[0]?.id ?? "");
+  const [goldenKeywordJobs, setGoldenKeywordJobs] = useState<GoldenKeywordJob[]>([]);
   const [storeTasks, setStoreTasks] = useState<StoreTaskItem[]>(() => hydrateTasks(weeklyTasks));
   const [memoDraft, setMemoDraft] = useState("");
   const [selectedMemoDate, setSelectedMemoDate] = useState("");
@@ -302,6 +324,7 @@ export function StoreInfoPage({
     const savedTasks = window.localStorage.getItem("erp:store-weekly-tasks");
     const savedSetupItems = window.localStorage.getItem("erp:setup-items-by-month");
     const savedSetupPhotos = window.localStorage.getItem("erp:setup-photos");
+    const savedGoldenJobs = window.localStorage.getItem("erp-golden-keyword-jobs");
     if (savedProfile) {
       try {
         setProfile({ ...defaultStoreProfile, ...(JSON.parse(savedProfile) as StoreProfile) });
@@ -330,7 +353,27 @@ export function StoreInfoPage({
         window.localStorage.removeItem("erp:setup-photos");
       }
     }
+    if (savedGoldenJobs) {
+      try {
+        setGoldenKeywordJobs(JSON.parse(savedGoldenJobs) as GoldenKeywordJob[]);
+      } catch {
+        window.localStorage.removeItem("erp-golden-keyword-jobs");
+      }
+    }
   }, []);
+
+  useEffect(() => {
+    if (!selectedStoreId || !stores?.length) return;
+    const selectedStore = stores.find((store) => store.id === selectedStoreId);
+    if (!selectedStore) return;
+    setProfile((current) => ({
+      ...current,
+      storeName: selectedStore.name,
+      manager: selectedStore.manager,
+      contractPeriod: selectedStore.week === "신규" ? "4주" : selectedStore.week.replace("차", ""),
+      memo: selectedStore.memo || current.memo,
+    }));
+  }, [selectedStoreId, stores]);
 
   useEffect(() => {
     window.localStorage.setItem("erp:setup-items-by-month", JSON.stringify(setupItemsByMonth));
@@ -462,6 +505,14 @@ export function StoreInfoPage({
     () => storeTasks.filter((task) => task.week === selectedWeek),
     [storeTasks, selectedWeek],
   );
+  const selectedGoldenJobs = useMemo(
+    () => goldenKeywordJobs.filter((job) => job.storeId === selectedStoreId || job.storeName === profile.storeName),
+    [goldenKeywordJobs, profile.storeName, selectedStoreId],
+  );
+  const goldenKeywords = useMemo(
+    () => selectedGoldenJobs.flatMap((job) => job.rows.filter((row) => row.result === "꿀키워드")).slice(0, 20),
+    [selectedGoldenJobs],
+  );
 
   const updateSetupItem = (id: string, patch: Partial<SetupItem>) => {
     setSetupItemsByMonth((months) => {
@@ -554,11 +605,32 @@ export function StoreInfoPage({
       </div>
 
       <section className="store-summary-strip">
-        <strong>{profile.storeName}</strong>
+        {stores?.length ? (
+          <select className="store-switch-select" value={selectedStoreId} onChange={(event) => setSelectedStoreId(event.target.value)}>
+            {stores.map((store) => (
+              <option key={store.id} value={store.id}>{store.name}</option>
+            ))}
+          </select>
+        ) : (
+          <strong>{profile.storeName}</strong>
+        )}
         <span>MID {profile.placeMid}</span>
         <span>담당자 {profile.manager}</span>
         <span>관리 {profile.contractPeriod}</span>
         {savedAt && <em>{savedAt}</em>}
+      </section>
+
+      <section className="panel">
+        <h2>매장 키워드 / 꿀키워드 히스토리</h2>
+        <p className="store-help-text">유입/키워드 탭에서 꿀키워드 탐색기를 실행하면 이 매장에 자동으로 쌓입니다.</p>
+        <div className="golden-keyword-chip-list">
+          {goldenKeywords.map((row) => (
+            <span key={`${row.keyword}-${row.volume}`}>
+              {row.keyword} · 검색량 {row.volume} · 지도 {row.pageCount}p
+            </span>
+          ))}
+          {goldenKeywords.length === 0 && <em>아직 등록된 꿀키워드가 없습니다.</em>}
+        </div>
       </section>
 
       <section className="panel store-form-grid">

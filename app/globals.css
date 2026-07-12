@@ -2229,6 +2229,16 @@ a {
   color: var(--blue);
 }
 
+.store-switch-select {
+  min-width: 220px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #fff;
+  padding: 8px 10px;
+  color: var(--blue);
+  font-weight: 900;
+}
+
 .store-summary-strip span,
 .store-summary-strip em {
   border-radius: 999px;
@@ -2244,6 +2254,28 @@ a {
   margin-left: auto;
   background: #dcfce7;
   color: #15803d;
+}
+
+.golden-keyword-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.golden-keyword-chip-list span {
+  border: 1px solid #bbf7d0;
+  border-radius: 999px;
+  background: #f0fdf4;
+  padding: 7px 10px;
+  color: #166534;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.golden-keyword-chip-list em {
+  color: var(--muted);
+  font-style: normal;
 }
 
 .store-form-grid {
