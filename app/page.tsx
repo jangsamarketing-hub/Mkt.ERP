@@ -266,6 +266,28 @@ type KeywordAnalysisRow = {
   result: "꿀키워드" | "보류" | "저검색";
 };
 
+type PlaceCsvUpload = {
+  id: string;
+  storeId: string;
+  storeName: string;
+  fileName: string;
+  uploadedAt: string;
+  weekStart: string;
+  weekEnd: string;
+  keywordRows: (string | number)[][];
+  channelRows: (string | number)[][];
+};
+
+type GoldenKeywordJob = {
+  id: string;
+  storeId: string;
+  storeName: string;
+  createdAt: string;
+  keywordCount: number;
+  resultCount: number;
+  rows: KeywordAnalysisRow[];
+};
+
 const tagKeywords = [
   "성수동제철스시",
   "성수역메로구이",
@@ -493,7 +515,7 @@ function uniqueKeywords(keywords: string[]) {
 }
 
 function makeKeywordAnalysisRows(keywords: string[]): KeywordAnalysisRow[] {
-  return keywords.slice(0, 20).map((keyword, index) => {
+  return keywords.slice(0, 300).map((keyword, index) => {
     const seed = Array.from(keyword).reduce((sum, char) => sum + char.charCodeAt(0), 0) + index * 17;
     const volume = 40 + (seed % 520);
     const pageCount = 1 + (seed % 5);
@@ -501,6 +523,40 @@ function makeKeywordAnalysisRows(keywords: string[]): KeywordAnalysisRow[] {
     const result = volume >= 180 && pageCount <= 2 ? "꿀키워드" : volume < 80 ? "저검색" : "보류";
     return { keyword, volume, pageCount, estimatedStores, result };
   });
+}
+
+function getUploadWeekRange(dateText: string) {
+  const date = dateText ? new Date(`${dateText}T00:00:00`) : new Date();
+  const day = date.getDay();
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+  const monday = new Date(date);
+  monday.setDate(date.getDate() + mondayOffset);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  const format = (value: Date) => value.toISOString().slice(0, 10);
+  return { weekStart: format(monday), weekEnd: format(sunday) };
+}
+
+function parseLooseCsvRows(csvText: string) {
+  const rows = csvText
+    .split(/\r?\n/)
+    .map((line) => line.split(/\t|,/).map((cell) => cell.replace(/^"|"$/g, "").trim()).filter(Boolean))
+    .filter((cells) => cells.length >= 2);
+
+  const metricRows = rows
+    .map((cells) => {
+      const label = cells.find((cell) => /[가-힣A-Za-z]/.test(cell)) ?? "";
+      const numeric = cells
+        .map((cell) => Number(cell.replace(/[^\d.-]/g, "")))
+        .find((value) => Number.isFinite(value) && value > 0);
+      return label && numeric ? [label, numeric, 0, ""] : null;
+    })
+    .filter((row): row is (string | number)[] => Boolean(row));
+
+  return {
+    keywordRows: metricRows.slice(0, 80),
+    channelRows: metricRows.slice(80, 100),
+  };
 }
 
 function SalesComboChart() {
@@ -1051,6 +1107,10 @@ function AdPage() {
 function InflowPage() {
   const [selectedInflowStoreId, setSelectedInflowStoreId] = useState("");
   const [inflowMode, setInflowMode] = useState<"range" | "weekly" | "monthly">("range");
+  const [uploadDate, setUploadDate] = useState("2026-06-01");
+  const [placeCsvUploads, setPlaceCsvUploads] = useState<PlaceCsvUpload[]>([]);
+  const [goldenKeywordJobs, setGoldenKeywordJobs] = useState<GoldenKeywordJob[]>([]);
+  const [activeAnalysisRows, setActiveAnalysisRows] = useState<KeywordAnalysisRow[]>([]);
   const [keywordInputs, setKeywordInputs] = useState<Record<number, string>>(() =>
     Object.fromEntries(keywordGroups.map((group, index) => [index + 1, group.sample])),
   );
@@ -1065,9 +1125,33 @@ function InflowPage() {
 
   const tagSet = generatedKeywords.slice(0, 50);
   const powerlinkSet = generatedKeywords.slice(0, 1000);
-  const analysisRows = makeKeywordAnalysisRows(generatedKeywords);
   const hasSelectedStore = Boolean(selectedInflowStoreId);
   const selectedInflowStore = stores.find((store) => store.id === selectedInflowStoreId);
+  const selectedUploads = placeCsvUploads.filter((upload) => upload.storeId === selectedInflowStoreId);
+  const latestUpload = selectedUploads[0];
+  const displayedKeywords = latestUpload?.keywordRows.length ? latestUpload.keywordRows : inflowKeywords;
+  const displayedChannels = latestUpload?.channelRows.length ? latestUpload.channelRows : inflowChannels;
+  const analysisRows = activeAnalysisRows.length ? activeAnalysisRows : makeKeywordAnalysisRows(generatedKeywords).slice(0, 20);
+  const storeGoldenJobs = goldenKeywordJobs.filter((job) => job.storeId === selectedInflowStoreId);
+
+  useEffect(() => {
+    try {
+      const savedUploads = window.localStorage.getItem("erp-place-csv-uploads");
+      const savedJobs = window.localStorage.getItem("erp-golden-keyword-jobs");
+      if (savedUploads) setPlaceCsvUploads(JSON.parse(savedUploads) as PlaceCsvUpload[]);
+      if (savedJobs) setGoldenKeywordJobs(JSON.parse(savedJobs) as GoldenKeywordJob[]);
+    } catch {
+      // 브라우저 임시 저장 실패는 화면 사용을 막지 않는다.
+    }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("erp-place-csv-uploads", JSON.stringify(placeCsvUploads));
+  }, [placeCsvUploads]);
+
+  useEffect(() => {
+    window.localStorage.setItem("erp-golden-keyword-jobs", JSON.stringify(goldenKeywordJobs));
+  }, [goldenKeywordJobs]);
 
   const toggleRule = (rule: string) => {
     setSelectedRules((rules) => (
@@ -1089,6 +1173,44 @@ function InflowPage() {
     setRemoveSpaces(true);
     setDedupe(true);
     setGeneratedKeywords([]);
+    setActiveAnalysisRows([]);
+  };
+
+  const uploadPlaceCsv = async (file: File | undefined) => {
+    if (!file || !selectedInflowStore) return;
+    const text = await file.text();
+    const parsed = parseLooseCsvRows(text);
+    const { weekStart, weekEnd } = getUploadWeekRange(uploadDate);
+    const upload: PlaceCsvUpload = {
+      id: `${selectedInflowStore.id}-${Date.now()}`,
+      storeId: selectedInflowStore.id,
+      storeName: selectedInflowStore.name,
+      fileName: file.name,
+      uploadedAt: new Date().toISOString(),
+      weekStart,
+      weekEnd,
+      keywordRows: parsed.keywordRows,
+      channelRows: parsed.channelRows,
+    };
+    setPlaceCsvUploads((uploads) => [upload, ...uploads]);
+  };
+
+  const runGoldenKeywordMining = () => {
+    if (!selectedInflowStore || generatedKeywords.length === 0) return;
+    const rows = makeKeywordAnalysisRows(generatedKeywords)
+      .sort((a, b) => a.pageCount - b.pageCount || b.volume - a.volume)
+      .slice(0, 120);
+    const job: GoldenKeywordJob = {
+      id: `${selectedInflowStore.id}-gold-${Date.now()}`,
+      storeId: selectedInflowStore.id,
+      storeName: selectedInflowStore.name,
+      createdAt: new Date().toISOString(),
+      keywordCount: generatedKeywords.length,
+      resultCount: rows.filter((row) => row.result === "꿀키워드").length,
+      rows,
+    };
+    setActiveAnalysisRows(rows);
+    setGoldenKeywordJobs((jobs) => [job, ...jobs]);
   };
 
   return (
@@ -1134,6 +1256,34 @@ function InflowPage() {
         </button>
         <span className="muted-note">CSV 주간 데이터는 월요일~일요일 기준으로 누적 후 조회합니다.</span>
       </div>
+      <section className="panel csv-upload-panel">
+        <div>
+          <h2>네이버 플레이스 CSV 주간 업로드</h2>
+          <p className="plain-text">매장별로 주간 CSV를 계속 누적합니다. 실제 서버 저장 전까지는 브라우저 임시 저장으로 동작합니다.</p>
+        </div>
+        <div className="csv-upload-controls">
+          <label>
+            기준 주 날짜
+            <input className="date-input" value={uploadDate} onChange={(event) => setUploadDate(event.target.value)} type="date" />
+          </label>
+          <label className={selectedInflowStore ? "file-upload-button" : "file-upload-button disabled"}>
+            CSV 업로드
+            <input
+              accept=".csv,text/csv"
+              disabled={!selectedInflowStore}
+              onChange={(event) => uploadPlaceCsv(event.target.files?.[0])}
+              type="file"
+            />
+          </label>
+        </div>
+        <div className="upload-history-list">
+          {selectedUploads.slice(0, 4).map((upload) => (
+            <span key={upload.id}>{upload.weekStart}~{upload.weekEnd} · {upload.fileName}</span>
+          ))}
+          {selectedInflowStore && selectedUploads.length === 0 && <span>아직 업로드된 CSV가 없습니다.</span>}
+          {!selectedInflowStore && <span>먼저 매장을 선택하세요.</span>}
+        </div>
+      </section>
       <div className="detail-grid">
         <MetricCard label="플레이스 유입" value={hasSelectedStore ? "2,326" : "데이터 없음"} tone={hasSelectedStore ? "red" : undefined} />
         <MetricCard label="예약·주문 신청" value={hasSelectedStore ? "6" : "데이터 없음"} />
@@ -1143,12 +1293,12 @@ function InflowPage() {
       {hasSelectedStore ? (
         <>
           <section className="panel two-col">
-            <ScrollableMetricList title="유입 키워드" rows={inflowKeywords} />
-            <ScrollableMetricList title="유입 채널" rows={inflowChannels} />
+            <ScrollableMetricList title="유입 키워드" rows={displayedKeywords} />
+            <ScrollableMetricList title="유입 채널" rows={displayedChannels} />
           </section>
           <section className="panel two-col">
-            <ScrollableMetricList title="기간별 증감 유입키워드" rows={inflowKeywords.slice(0, 12)} showDiff />
-            <ScrollableMetricList title="기간별 증감 유입채널" rows={inflowChannels} showDiff />
+            <ScrollableMetricList title="기간별 증감 유입키워드" rows={displayedKeywords.slice(0, 12)} showDiff />
+            <ScrollableMetricList title="기간별 증감 유입채널" rows={displayedChannels} showDiff />
           </section>
         </>
       ) : (
@@ -1236,7 +1386,24 @@ function InflowPage() {
         </div>
       </section>
       <section className="panel">
-        <h2>검색광고 API 조회수 + 지도 노출 매장수 분석</h2>
+        <div className="section-headline">
+          <div>
+            <h2>꿀키워드 탐색기</h2>
+            <p className="plain-text">현재 조합된 키워드를 매장 히스토리에 남기고, 지도 페이지수가 작은 키워드부터 우선 정렬합니다.</p>
+          </div>
+          <button className="btn btn-primary" disabled={!selectedInflowStore || generatedKeywords.length === 0} onClick={runGoldenKeywordMining} type="button">
+            꿀키워드 탐색기 실행
+          </button>
+        </div>
+        <div className="golden-job-list">
+          {storeGoldenJobs.slice(0, 3).map((job) => (
+            <span key={job.id}>
+              {new Date(job.createdAt).toLocaleString("ko-KR")} · {job.keywordCount.toLocaleString("ko-KR")}개 분석 · 꿀키워드 {job.resultCount}개
+            </span>
+          ))}
+          {selectedInflowStore && storeGoldenJobs.length === 0 && <span>이 매장의 꿀키워드 탐색 히스토리가 없습니다.</span>}
+          {!selectedInflowStore && <span>매장을 선택하면 탐색 히스토리가 매장별로 저장됩니다.</span>}
+        </div>
         <div className="analysis-table">
           <div className="analysis-head">
             <span>키워드</span>

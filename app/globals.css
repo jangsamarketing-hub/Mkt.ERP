@@ -1087,6 +1087,67 @@ a {
   background: #f8fafc;
 }
 
+.csv-upload-panel {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 14px;
+  align-items: start;
+}
+
+.csv-upload-controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.csv-upload-controls label {
+  display: grid;
+  gap: 6px;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.file-upload-button {
+  min-width: 118px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #eff6ff;
+  padding: 9px 12px;
+  color: var(--blue);
+  cursor: pointer;
+  text-align: center;
+}
+
+.file-upload-button.disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.file-upload-button input {
+  display: none;
+}
+
+.upload-history-list,
+.golden-job-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  grid-column: 1 / -1;
+}
+
+.upload-history-list span,
+.golden-job-list span {
+  border: 1px solid #e5eaf1;
+  border-radius: 999px;
+  background: #f8fafc;
+  padding: 6px 10px;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .automation-panel {
   display: grid;
   gap: 12px;
