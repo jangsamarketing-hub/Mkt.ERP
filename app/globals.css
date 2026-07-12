@@ -1142,6 +1142,25 @@ a {
   font-size: 13px;
 }
 
+.combo-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #e5eaf1;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 10px;
+}
+
+.combo-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .keyword-output-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

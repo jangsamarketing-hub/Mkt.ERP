@@ -256,6 +256,15 @@ const keywordGroups = [
 ];
 
 const combinationRules = ["1+3", "1+2+3", "1+2+4", "1+4", "2+3", "2+4", "5+3", "5+4", "1+6", "2+6"];
+const defaultCombinationRules = ["1+3", "1+2+3", "1+2+4", "1+4", "2+3", "2+4", "5+3", "5+4"];
+
+type KeywordAnalysisRow = {
+  keyword: string;
+  volume: number;
+  pageCount: number;
+  estimatedStores: number;
+  result: "꿀키워드" | "보류" | "저검색";
+};
 
 const tagKeywords = [
   "성수동제철스시",
@@ -425,6 +434,52 @@ function downloadKeywordCsv(filename: string, keywords: string[]) {
   anchor.download = filename;
   anchor.click();
   URL.revokeObjectURL(url);
+}
+
+function parseKeywordLines(value: string) {
+  return value
+    .split(/\r?\n|,/)
+    .map((keyword) => keyword.trim())
+    .filter(Boolean);
+}
+
+function normalizeKeyword(keyword: string, removeSpaces: boolean) {
+  const normalized = keyword.replace(/\s+/g, " ").trim();
+  return removeSpaces ? normalized.replace(/\s/g, "") : normalized;
+}
+
+function buildKeywordCombinations(groups: Record<number, string[]>, rules: string[], removeSpaces: boolean) {
+  const results: string[] = [];
+
+  rules.forEach((rule) => {
+    const indexes = rule.split("+").map((index) => Number(index));
+    const combine = (depth: number, parts: string[]) => {
+      if (depth === indexes.length) {
+        results.push(normalizeKeyword(parts.join(""), removeSpaces));
+        return;
+      }
+      const groupKeywords = groups[indexes[depth]] ?? [];
+      groupKeywords.forEach((keyword) => combine(depth + 1, [...parts, keyword]));
+    };
+    combine(0, []);
+  });
+
+  return results.filter(Boolean);
+}
+
+function uniqueKeywords(keywords: string[]) {
+  return Array.from(new Set(keywords));
+}
+
+function makeKeywordAnalysisRows(keywords: string[]): KeywordAnalysisRow[] {
+  return keywords.slice(0, 20).map((keyword, index) => {
+    const seed = Array.from(keyword).reduce((sum, char) => sum + char.charCodeAt(0), 0) + index * 17;
+    const volume = 40 + (seed % 520);
+    const pageCount = 1 + (seed % 5);
+    const estimatedStores = pageCount * 50 - 1;
+    const result = volume >= 180 && pageCount <= 2 ? "꿀키워드" : volume < 80 ? "저검색" : "보류";
+    return { keyword, volume, pageCount, estimatedStores, result };
+  });
 }
 
 function SalesComboChart() {
@@ -973,6 +1028,36 @@ function AdPage() {
 }
 
 function InflowPage() {
+  const [keywordInputs, setKeywordInputs] = useState<Record<number, string>>(() =>
+    Object.fromEntries(keywordGroups.map((group, index) => [index + 1, group.sample])),
+  );
+  const [selectedRules, setSelectedRules] = useState<string[]>(defaultCombinationRules);
+  const [removeSpaces, setRemoveSpaces] = useState(true);
+  const [dedupe, setDedupe] = useState(true);
+  const [generatedKeywords, setGeneratedKeywords] = useState<string[]>(() => uniqueKeywords(buildKeywordCombinations(
+    Object.fromEntries(keywordGroups.map((group, index) => [index + 1, parseKeywordLines(group.sample)])),
+    defaultCombinationRules,
+    true,
+  )));
+
+  const tagSet = generatedKeywords.slice(0, 50);
+  const powerlinkSet = generatedKeywords.slice(0, 1000);
+  const analysisRows = makeKeywordAnalysisRows(generatedKeywords);
+
+  const toggleRule = (rule: string) => {
+    setSelectedRules((rules) => (
+      rules.includes(rule) ? rules.filter((item) => item !== rule) : [...rules, rule]
+    ));
+  };
+
+  const generateKeywords = () => {
+    const groups = Object.fromEntries(
+      Object.entries(keywordInputs).map(([groupIndex, value]) => [Number(groupIndex), parseKeywordLines(value)]),
+    );
+    const nextKeywords = buildKeywordCombinations(groups, selectedRules, removeSpaces);
+    setGeneratedKeywords(dedupe ? uniqueKeywords(nextKeywords) : nextKeywords);
+  };
+
   return (
     <>
       <PageHeader
@@ -1017,13 +1102,13 @@ function InflowPage() {
         <div className="section-headline">
           <h2>매장별 키워드 조합기</h2>
           <div className="filter-row">
-            <button className="btn btn-primary" type="button">
+            <button className="btn btn-primary" onClick={generateKeywords} type="button">
               조합 생성
             </button>
-            <button className="btn btn-light" onClick={() => downloadKeywordCsv("tag-keywords-50.csv", tagKeywords)} type="button">
+            <button className="btn btn-light" onClick={() => downloadKeywordCsv("tag-keywords-50.csv", tagSet)} type="button">
               태그용 CSV
             </button>
-            <button className="btn btn-light" onClick={() => downloadKeywordCsv("powerlink-keywords-1000.csv", powerlinkKeywords)} type="button">
+            <button className="btn btn-light" onClick={() => downloadKeywordCsv("powerlink-keywords-1000.csv", powerlinkSet)} type="button">
               파워링크 CSV
             </button>
           </div>
@@ -1032,7 +1117,10 @@ function InflowPage() {
           {keywordGroups.map((group) => (
             <label className="keyword-box" key={group.title}>
               <span>{group.title}</span>
-              <textarea readOnly value={group.sample} />
+              <textarea
+                value={keywordInputs[Number(group.title.slice(0, 1))] ?? ""}
+                onChange={(event) => setKeywordInputs({ ...keywordInputs, [Number(group.title.slice(0, 1))]: event.target.value })}
+              />
             </label>
           ))}
         </div>
@@ -1044,26 +1132,40 @@ function InflowPage() {
           <div className="combo-rules">
             {combinationRules.map((rule) => (
               <label className="combo-rule" key={rule}>
-                <input checked readOnly type="checkbox" />
+                <input checked={selectedRules.includes(rule)} onChange={() => toggleRule(rule)} type="checkbox" />
                 {rule}
               </label>
             ))}
+          </div>
+          <div className="combo-options">
+            <label>
+              <input checked={removeSpaces} onChange={(event) => setRemoveSpaces(event.target.checked)} type="checkbox" />
+              키워드 사이 공백 제거
+            </label>
+            <label>
+              <input checked={dedupe} onChange={(event) => setDedupe(event.target.checked)} type="checkbox" />
+              중복 제거
+            </label>
+            <button className="btn btn-primary" onClick={generateKeywords} type="button">
+              선택 조합으로 생성
+            </button>
+            <span className="muted-note">생성 {generatedKeywords.length.toLocaleString("ko-KR")}개 · 태그 {tagSet.length}개 · 파워링크 {powerlinkSet.length}개</span>
           </div>
         </div>
         <div className="keyword-output-grid">
           <div>
             <h3>태그용 50개 세트</h3>
             <div className="set-preview">
-              {tagKeywords.map((keyword) => (
-                <span key={keyword}>{keyword}</span>
+              {tagSet.map((keyword, index) => (
+                <span key={`${keyword}-${index}`}>{keyword}</span>
               ))}
             </div>
           </div>
           <div>
             <h3>파워링크용 1000개 세트</h3>
             <div className="set-preview">
-              {powerlinkKeywords.map((keyword) => (
-                <span key={keyword}>{keyword}</span>
+              {powerlinkSet.map((keyword, index) => (
+                <span key={`${keyword}-${index}`}>{keyword}</span>
               ))}
             </div>
           </div>
@@ -1079,13 +1181,13 @@ function InflowPage() {
             <span>추정 매장수</span>
             <span>판정</span>
           </div>
-          {keywordAnalysisRows.map((row) => (
-            <div className="analysis-row" key={String(row[0])}>
-              <strong>{row[0]}</strong>
-              <span>{row[1]}</span>
-              <span>{row[2]}</span>
-              <span>{row[3]}</span>
-              <em className={row[4] === "꿀키워드" ? "good-text" : ""}>{row[4]}</em>
+          {analysisRows.map((row) => (
+            <div className="analysis-row" key={row.keyword}>
+              <strong>{row.keyword}</strong>
+              <span>{row.volume}</span>
+              <span>{row.pageCount}</span>
+              <span>{row.estimatedStores}</span>
+              <em className={row.result === "꿀키워드" ? "good-text" : ""}>{row.result}</em>
             </div>
           ))}
         </div>
