@@ -1,0 +1,15 @@
+.next/
+node_modules/
+out/
+dist/
+build/
+.env
+.env*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.tsbuildinfo
+dev-server.log
+dev-server.err.log
+_incoming/
