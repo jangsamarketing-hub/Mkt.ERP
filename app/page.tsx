@@ -269,7 +269,7 @@ type KeywordAnalysisRow = {
   volume: number;
   pageCount: number | null;
   estimatedStores: number;
-  result: "꿀키워드" | "보류" | "저검색" | "지도확인실패";
+  result: "꿀키워드" | "보류" | "저검색" | "지도확인실패" | "지도차단";
   source?: "real" | "estimate";
 };
 
@@ -1266,12 +1266,13 @@ function InflowPage() {
         const response = await fetch(`/api/naver-map/page-count?keyword=${encodeURIComponent(keyword)}`);
         const payload = await response.json();
         const pageCount = typeof payload.pageCount === "number" ? payload.pageCount : null;
+        const mapResult: KeywordAnalysisRow["result"] = pageCount === null && payload.status === "blocked" ? "지도차단" : pageCount === null ? "지도확인실패" : "보류";
         mapCheckedRows.push({
           keyword,
           volume: 0,
           pageCount,
           estimatedStores: pageCount ? pageCount * 50 - 1 : 0,
-          result: pageCount === null ? "지도확인실패" : pageCount < 3 ? "보류" : "보류",
+          result: mapResult,
           source: "real",
         });
       } catch {
@@ -1302,7 +1303,7 @@ function InflowPage() {
     const rows = mapCheckedRows
       .map((row) => {
         const volume = volumeMap.get(row.keyword) ?? row.volume;
-        const result: KeywordAnalysisRow["result"] = row.pageCount === null ? "지도확인실패" : row.pageCount < 3 ? "꿀키워드" : "보류";
+        const result: KeywordAnalysisRow["result"] = row.result === "지도차단" ? "지도차단" : row.pageCount === null ? "지도확인실패" : row.pageCount < 3 ? "꿀키워드" : "보류";
         return { ...row, volume, result };
       })
       .sort((a, b) => (a.pageCount ?? 99) - (b.pageCount ?? 99) || b.volume - a.volume)
@@ -1525,7 +1526,7 @@ function InflowPage() {
             <div className="analysis-row" key={row.keyword}>
               <strong>{row.keyword}</strong>
               <span>{row.volume ? row.volume.toLocaleString("ko-KR") : row.result === "꿀키워드" ? "조회중/없음" : "-"}</span>
-              <span>{row.pageCount ?? "확인실패"}</span>
+              <span>{row.pageCount ?? (row.result === "지도차단" ? "차단" : "확인실패")}</span>
               <span>{row.estimatedStores ? row.estimatedStores.toLocaleString("ko-KR") : "-"}</span>
               <em className={row.result === "꿀키워드" ? "good-text" : ""}>{row.result}</em>
             </div>
