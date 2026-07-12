@@ -267,9 +267,10 @@ const defaultCombinationRules = ["1+3", "1+2+3", "1+2+4", "1+4", "2+3", "2+4", "
 type KeywordAnalysisRow = {
   keyword: string;
   volume: number;
-  pageCount: number;
+  pageCount: number | null;
   estimatedStores: number;
-  result: "꿀키워드" | "보류" | "저검색";
+  result: "꿀키워드" | "보류" | "저검색" | "지도확인실패";
+  source?: "real" | "estimate";
 };
 
 type PlaceCsvUpload = {
@@ -528,7 +529,7 @@ function makeKeywordAnalysisRows(keywords: string[]): KeywordAnalysisRow[] {
     const pageCount = 1 + (seed % 5);
     const estimatedStores = pageCount * 50 - 1;
     const result = volume >= 180 && pageCount <= 2 ? "꿀키워드" : volume < 80 ? "저검색" : "보류";
-    return { keyword, volume, pageCount, estimatedStores, result };
+    return { keyword, volume, pageCount, estimatedStores, result, source: "estimate" };
   });
 }
 
@@ -1178,6 +1179,7 @@ function InflowPage() {
     defaultCombinationRules,
     true,
   )));
+  const [miningStatus, setMiningStatus] = useState("");
 
   const tagSet = generatedKeywords.slice(0, 50);
   const powerlinkSet = generatedKeywords.slice(0, 1000);
@@ -1253,10 +1255,57 @@ function InflowPage() {
     setPlaceCsvUploads((uploads) => [upload, ...uploads]);
   };
 
-  const runGoldenKeywordMining = () => {
+  const runGoldenKeywordMining = async () => {
     if (!selectedInflowStore || generatedKeywords.length === 0) return;
-    const rows = makeKeywordAnalysisRows(generatedKeywords)
-      .sort((a, b) => a.pageCount - b.pageCount || b.volume - a.volume)
+    setMiningStatus("지도 페이지수 확인 중");
+    const targetKeywords = generatedKeywords.slice(0, 300);
+    const mapCheckedRows: KeywordAnalysisRow[] = [];
+
+    for (const keyword of targetKeywords) {
+      try {
+        const response = await fetch(`/api/naver-map/page-count?keyword=${encodeURIComponent(keyword)}`);
+        const payload = await response.json();
+        const pageCount = typeof payload.pageCount === "number" ? payload.pageCount : null;
+        mapCheckedRows.push({
+          keyword,
+          volume: 0,
+          pageCount,
+          estimatedStores: pageCount ? pageCount * 50 - 1 : 0,
+          result: pageCount === null ? "지도확인실패" : pageCount < 3 ? "보류" : "보류",
+          source: "real",
+        });
+      } catch {
+        mapCheckedRows.push({ keyword, volume: 0, pageCount: null, estimatedStores: 0, result: "지도확인실패", source: "real" });
+      }
+    }
+
+    const lowCompetitionRows = mapCheckedRows.filter((row) => row.pageCount !== null && row.pageCount < 3);
+    setMiningStatus(`${lowCompetitionRows.length}개 저경쟁 키워드 검색량 조회 중`);
+
+    let volumeMap = new Map<string, number>();
+    if (lowCompetitionRows.length > 0) {
+      try {
+        const response = await fetch("/api/naver-searchad/keyword-volume", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ keywords: lowCompetitionRows.map((row) => row.keyword) }),
+        });
+        if (response.ok) {
+          const payload = await response.json();
+          volumeMap = new Map((payload.rows ?? []).map((row: { keyword: string; volume: number }) => [row.keyword, row.volume]));
+        }
+      } catch {
+        volumeMap = new Map();
+      }
+    }
+
+    const rows = mapCheckedRows
+      .map((row) => {
+        const volume = volumeMap.get(row.keyword) ?? row.volume;
+        const result: KeywordAnalysisRow["result"] = row.pageCount === null ? "지도확인실패" : row.pageCount < 3 ? "꿀키워드" : "보류";
+        return { ...row, volume, result };
+      })
+      .sort((a, b) => (a.pageCount ?? 99) - (b.pageCount ?? 99) || b.volume - a.volume)
       .slice(0, 120);
     const job: GoldenKeywordJob = {
       id: `${selectedInflowStore.id}-gold-${Date.now()}`,
@@ -1269,6 +1318,7 @@ function InflowPage() {
     };
     setActiveAnalysisRows(rows);
     setGoldenKeywordJobs((jobs) => [job, ...jobs]);
+    setMiningStatus(`완료: 지도 3페이지 미만 ${rows.filter((row) => row.result === "꿀키워드").length}개`);
   };
 
   return (
@@ -1453,6 +1503,7 @@ function InflowPage() {
             꿀키워드 탐색기 실행
           </button>
         </div>
+        {miningStatus && <p className="mining-status">{miningStatus}</p>}
         <div className="golden-job-list">
           {storeGoldenJobs.slice(0, 3).map((job) => (
             <span key={job.id}>
@@ -1473,9 +1524,9 @@ function InflowPage() {
           {analysisRows.map((row) => (
             <div className="analysis-row" key={row.keyword}>
               <strong>{row.keyword}</strong>
-              <span>{row.volume}</span>
-              <span>{row.pageCount}</span>
-              <span>{row.estimatedStores}</span>
+              <span>{row.volume ? row.volume.toLocaleString("ko-KR") : row.result === "꿀키워드" ? "조회중/없음" : "-"}</span>
+              <span>{row.pageCount ?? "확인실패"}</span>
+              <span>{row.estimatedStores ? row.estimatedStores.toLocaleString("ko-KR") : "-"}</span>
               <em className={row.result === "꿀키워드" ? "good-text" : ""}>{row.result}</em>
             </div>
           ))}
