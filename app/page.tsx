@@ -615,7 +615,7 @@ const makeRoutine = (day: string, index: number, task: string, memo: string): Ad
   checked: true,
 });
 
-function AdminDailyPage({ rows }: { rows: StoreRow[] }) {
+function AdminDailyPage({ rows = stores }: { rows?: StoreRow[] }) {
   const [selectedDay, setSelectedDay] = useState("월");
   const [editingRoutineId, setEditingRoutineId] = useState("");
   const [dayRoutines, setDayRoutines] = useState<Record<string, AdminRoutineItem[]>>({
@@ -764,7 +764,7 @@ function metricRate(current: number | null, previous: number | null) {
   return ((current - previous) / previous) * 100;
 }
 
-function Dashboard({ setView, rows }: { setView: (view: ViewId) => void; rows: StoreRow[] }) {
+function Dashboard({ setView, rows = stores }: { setView: (view: ViewId) => void; rows?: StoreRow[] }) {
   const [selectedDate, setSelectedDate] = useState("2026-07-12");
   const [appliedDate, setAppliedDate] = useState("2026-07-12");
   const [searchTerm, setSearchTerm] = useState("");
