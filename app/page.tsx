@@ -436,6 +436,27 @@ function downloadKeywordCsv(filename: string, keywords: string[]) {
   URL.revokeObjectURL(url);
 }
 
+function downloadKeywordColumnCsv(filename: string, keywords: string[], chunkSize: number) {
+  const columns = Array.from({ length: Math.ceil(keywords.length / chunkSize) }, (_, index) =>
+    keywords.slice(index * chunkSize, (index + 1) * chunkSize),
+  );
+  const rows = Array.from({ length: chunkSize }, (_, rowIndex) =>
+    columns
+      .map((column) => {
+        const keyword = column[rowIndex] ?? "";
+        return `"${keyword.replaceAll('"', '""')}"`;
+      })
+      .join(","),
+  );
+  const blob = new Blob(["\ufeff" + rows.join("\n")], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 function parseKeywordLines(value: string) {
   return value
     .split(/\r?\n|,/)
@@ -1028,6 +1049,8 @@ function AdPage() {
 }
 
 function InflowPage() {
+  const [selectedInflowStoreId, setSelectedInflowStoreId] = useState("");
+  const [inflowMode, setInflowMode] = useState<"range" | "weekly" | "monthly">("range");
   const [keywordInputs, setKeywordInputs] = useState<Record<number, string>>(() =>
     Object.fromEntries(keywordGroups.map((group, index) => [index + 1, group.sample])),
   );
@@ -1043,6 +1066,8 @@ function InflowPage() {
   const tagSet = generatedKeywords.slice(0, 50);
   const powerlinkSet = generatedKeywords.slice(0, 1000);
   const analysisRows = makeKeywordAnalysisRows(generatedKeywords);
+  const hasSelectedStore = Boolean(selectedInflowStoreId);
+  const selectedInflowStore = stores.find((store) => store.id === selectedInflowStoreId);
 
   const toggleRule = (rule: string) => {
     setSelectedRules((rules) => (
@@ -1058,6 +1083,14 @@ function InflowPage() {
     setGeneratedKeywords(dedupe ? uniqueKeywords(nextKeywords) : nextKeywords);
   };
 
+  const resetKeywords = () => {
+    setKeywordInputs(Object.fromEntries(keywordGroups.map((group, index) => [index + 1, group.sample])));
+    setSelectedRules(defaultCombinationRules);
+    setRemoveSpaces(true);
+    setDedupe(true);
+    setGeneratedKeywords([]);
+  };
+
   return (
     <>
       <PageHeader
@@ -1070,34 +1103,60 @@ function InflowPage() {
           </button>
         }
       />
-      <StoreContextBar />
+      <div className="store-context selectable-context">
+        <select value={selectedInflowStoreId} onChange={(event) => setSelectedInflowStoreId(event.target.value)}>
+          <option value="">매장을 선택하세요</option>
+          {stores.map((store) => (
+            <option key={store.id} value={store.id}>{store.name}</option>
+          ))}
+        </select>
+        {selectedInflowStore ? (
+          <>
+            <span>MID 20250761</span>
+            <span>담당자 {selectedInflowStore.manager}</span>
+            <span>관리 {selectedInflowStore.week}</span>
+          </>
+        ) : (
+          <span>매장을 선택하면 유입 데이터가 표시됩니다.</span>
+        )}
+      </div>
       <div className="filter-row toolbar">
         <input className="date-input" type="date" defaultValue="2026-06-01" />
         <input className="date-input" type="date" defaultValue="2026-06-30" />
-        <button className="btn btn-primary" type="button">
+        <button className={inflowMode === "range" ? "btn btn-primary" : "btn btn-light"} onClick={() => setInflowMode("range")} type="button">
           조회
         </button>
-        <button className="btn btn-light" type="button">
+        <button className={inflowMode === "weekly" ? "btn btn-primary" : "btn btn-light"} onClick={() => setInflowMode("weekly")} type="button">
           주간
         </button>
-        <button className="btn btn-light" type="button">
+        <button className={inflowMode === "monthly" ? "btn btn-primary" : "btn btn-light"} onClick={() => setInflowMode("monthly")} type="button">
           월간
         </button>
+        <span className="muted-note">CSV 주간 데이터는 월요일~일요일 기준으로 누적 후 조회합니다.</span>
       </div>
       <div className="detail-grid">
-        <MetricCard label="플레이스 유입" value="2,326" tone="red" />
-        <MetricCard label="예약·주문 신청" value="6" />
-        <MetricCard label="스마트콜 통화" value="0" tone="yellow" />
-        <MetricCard label="리뷰 등록" value="29" />
+        <MetricCard label="플레이스 유입" value={hasSelectedStore ? "2,326" : "데이터 없음"} tone={hasSelectedStore ? "red" : undefined} />
+        <MetricCard label="예약·주문 신청" value={hasSelectedStore ? "6" : "데이터 없음"} />
+        <MetricCard label="스마트콜 통화" value={hasSelectedStore ? "0" : "데이터 없음"} tone={hasSelectedStore ? "yellow" : undefined} />
+        <MetricCard label="리뷰 등록" value={hasSelectedStore ? "29" : "데이터 없음"} />
       </div>
-      <section className="panel two-col">
-        <ScrollableMetricList title="유입 키워드" rows={inflowKeywords} />
-        <ScrollableMetricList title="유입 채널" rows={inflowChannels} />
-      </section>
-      <section className="panel two-col">
-        <ScrollableMetricList title="기간별 증감 유입키워드" rows={inflowKeywords.slice(0, 12)} showDiff />
-        <ScrollableMetricList title="기간별 증감 유입채널" rows={inflowChannels} showDiff />
-      </section>
+      {hasSelectedStore ? (
+        <>
+          <section className="panel two-col">
+            <ScrollableMetricList title="유입 키워드" rows={inflowKeywords} />
+            <ScrollableMetricList title="유입 채널" rows={inflowChannels} />
+          </section>
+          <section className="panel two-col">
+            <ScrollableMetricList title="기간별 증감 유입키워드" rows={inflowKeywords.slice(0, 12)} showDiff />
+            <ScrollableMetricList title="기간별 증감 유입채널" rows={inflowChannels} showDiff />
+          </section>
+        </>
+      ) : (
+        <section className="panel empty-data-panel">
+          <h2>유입 데이터 없음</h2>
+          <p className="plain-text">먼저 매장을 선택하세요. CSV 업로드 데이터가 없는 기간은 0으로 추정하지 않고 데이터 없음으로 표시합니다.</p>
+        </section>
+      )}
       <section className="panel">
         <div className="section-headline">
           <h2>매장별 키워드 조합기</h2>
@@ -1105,10 +1164,13 @@ function InflowPage() {
             <button className="btn btn-primary" onClick={generateKeywords} type="button">
               조합 생성
             </button>
-            <button className="btn btn-light" onClick={() => downloadKeywordCsv("tag-keywords-50.csv", tagSet)} type="button">
+            <button className="btn btn-light" onClick={resetKeywords} type="button">
+              초기화
+            </button>
+            <button className="btn btn-light" onClick={() => downloadKeywordColumnCsv("tag-keywords-50.csv", generatedKeywords, 50)} type="button">
               태그용 CSV
             </button>
-            <button className="btn btn-light" onClick={() => downloadKeywordCsv("powerlink-keywords-1000.csv", powerlinkSet)} type="button">
+            <button className="btn btn-light" onClick={() => downloadKeywordColumnCsv("powerlink-keywords-1000.csv", generatedKeywords, 1000)} type="button">
               파워링크 CSV
             </button>
           </div>
@@ -1149,7 +1211,7 @@ function InflowPage() {
             <button className="btn btn-primary" onClick={generateKeywords} type="button">
               선택 조합으로 생성
             </button>
-            <span className="muted-note">생성 {generatedKeywords.length.toLocaleString("ko-KR")}개 · 태그 {tagSet.length}개 · 파워링크 {powerlinkSet.length}개</span>
+            <span className="muted-note">생성 {generatedKeywords.length.toLocaleString("ko-KR")}개 · 태그 CSV는 50개씩 열 분할 · 파워링크 CSV는 1000개씩 열 분할</span>
           </div>
         </div>
         <div className="keyword-output-grid">
@@ -1159,6 +1221,7 @@ function InflowPage() {
               {tagSet.map((keyword, index) => (
                 <span key={`${keyword}-${index}`}>{keyword}</span>
               ))}
+              {tagSet.length === 0 && <span>조합 생성 후 표시됩니다.</span>}
             </div>
           </div>
           <div>
@@ -1167,6 +1230,7 @@ function InflowPage() {
               {powerlinkSet.map((keyword, index) => (
                 <span key={`${keyword}-${index}`}>{keyword}</span>
               ))}
+              {powerlinkSet.length === 0 && <span>조합 생성 후 표시됩니다.</span>}
             </div>
           </div>
         </div>
