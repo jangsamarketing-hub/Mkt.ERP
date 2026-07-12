@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
+import * as XLSX from "xlsx";
 import { DailyTasksPage } from "@/components/daily-tasks/daily-tasks-page";
 import { StoreInfoPage } from "@/components/stores/store-info-page";
 import {
@@ -41,6 +42,11 @@ type StoreRow = {
   weeklyInflow: number[];
   weeklyTasks: [number, number, number, number];
   memo: string;
+};
+
+type BulkStoreImportResult = {
+  imported: number;
+  skipped: number;
 };
 
 type TaskItem = {
@@ -926,7 +932,17 @@ function metricRate(current: number | null, previous: number | null) {
   return ((current - previous) / previous) * 100;
 }
 
-function Dashboard({ setView, rows = stores }: { setView: (view: ViewId) => void; rows?: StoreRow[] }) {
+function Dashboard({
+  setView,
+  rows = stores,
+  onImportStores,
+  importStatus,
+}: {
+  setView: (view: ViewId) => void;
+  rows?: StoreRow[];
+  onImportStores?: (file: File | undefined) => void;
+  importStatus?: string;
+}) {
   const [selectedDate, setSelectedDate] = useState("2026-07-12");
   const [appliedDate, setAppliedDate] = useState("2026-07-12");
   const [searchTerm, setSearchTerm] = useState("");
@@ -972,6 +988,15 @@ function Dashboard({ setView, rows = stores }: { setView: (view: ViewId) => void
         description="비즈머니·네이버 유입·매출 신호등과 4주 유입량, 주간 업무 현황을 빠르게 봅니다."
         actions={
           <div className="filter-row top-actions">
+            <label className="btn btn-light file-action-button">
+              <Download size={16} />
+              엑셀 업체등록
+              <input
+                accept=".xlsx,.xls"
+                onChange={(event) => onImportStores?.(event.target.files?.[0])}
+                type="file"
+              />
+            </label>
             <button className="btn btn-light" onClick={() => setView("store")} type="button">
               <Building2 size={16} />
               업체 추가
@@ -993,6 +1018,7 @@ function Dashboard({ setView, rows = stores }: { setView: (view: ViewId) => void
           적용
         </button>
         <span className="applied-date">적용 기준일 {appliedDate}</span>
+        {importStatus && <span className="applied-date">{importStatus}</span>}
         <div className="legend">
           <span>
             <i className="dot green" /> 상승/유지
@@ -1996,10 +2022,57 @@ function getWeekRange(week: number) {
   return "(2026-07-06 ~ 2026-07-10)";
 }
 
+function isTestStoreName(name: string) {
+  const compact = name.replace(/\s/g, "");
+  return /asdf/i.test(compact) || /^\d{6,}$/.test(compact) || /^[ㄱ-ㅎㅏ-ㅣ]+$/.test(compact);
+}
+
+function sanitizeStoreRows(rows: StoreRow[]) {
+  return rows.filter((row) => row.name.trim() && !isTestStoreName(row.name));
+}
+
+function makeImportedStoreRow(name: string, index: number): StoreRow {
+  return {
+    id: `store-${name}-${Date.now()}-${index}`,
+    week: "신규",
+    name,
+    manager: "미배정",
+    bizMoney: null,
+    naverInflow: null,
+    sales: null,
+    previous: { bizMoney: null, naverInflow: null, sales: null },
+    weeklyInflow: [0, 0, 0, 0],
+    weeklyTasks: [0, 0, 0, 0],
+    memo: "",
+  };
+}
+
+function extractStoreNamesFromSheet(rows: unknown[][]) {
+  const headerCandidates = ["업체명", "매장명", "상호", "가맹점명", "업장명"];
+  const headerRowIndex = rows.findIndex((row) =>
+    row.some((cell) => headerCandidates.includes(String(cell ?? "").trim())),
+  );
+  const headerRow = rows[headerRowIndex] ?? [];
+  const storeNameColumn = headerRow.findIndex((cell) => headerCandidates.includes(String(cell ?? "").trim()));
+
+  if (headerRowIndex >= 0 && storeNameColumn >= 0) {
+    return rows
+      .slice(headerRowIndex + 1)
+      .map((row) => String(row[storeNameColumn] ?? "").trim())
+      .filter(Boolean);
+  }
+
+  return rows
+    .flat()
+    .map((cell) => String(cell ?? "").trim())
+    .filter((value) => value.length >= 2 && !headerCandidates.includes(value));
+}
+
 export default function HomePage() {
   const [activeView, setActiveView] = useState<ViewId>("dashboard");
   const [previousView, setPreviousView] = useState<ViewId>("dashboard");
   const [storeRows, setStoreRows] = useState<StoreRow[]>(stores);
+  const [storeImportStatus, setStoreImportStatus] = useState("");
   const navigateTo = (view: ViewId) => {
     setPreviousView(activeView);
     setActiveView(view);
@@ -2010,11 +2083,41 @@ export default function HomePage() {
     const savedRows = window.localStorage.getItem("erp:store-rows");
     if (!savedRows) return;
     try {
-      setStoreRows(JSON.parse(savedRows) as StoreRow[]);
+      const parsedRows = sanitizeStoreRows(JSON.parse(savedRows) as StoreRow[]);
+      setStoreRows(parsedRows);
+      window.localStorage.setItem("erp:store-rows", JSON.stringify(parsedRows));
     } catch {
       window.localStorage.removeItem("erp:store-rows");
     }
   }, []);
+
+  const importStoresFromExcel = async (file: File | undefined): Promise<BulkStoreImportResult | null> => {
+    if (!file) return null;
+    const buffer = await file.arrayBuffer();
+    const workbook = XLSX.read(buffer, { type: "array" });
+    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+    const sheetRows = XLSX.utils.sheet_to_json<unknown[]>(firstSheet, { header: 1, defval: "" });
+    const names = Array.from(new Set(extractStoreNamesFromSheet(sheetRows).filter((name) => !isTestStoreName(name))));
+
+    let result: BulkStoreImportResult = { imported: 0, skipped: 0 };
+    setStoreRows((currentRows) => {
+      const cleanedRows = sanitizeStoreRows(currentRows);
+      const existingNames = new Set(cleanedRows.map((row) => row.name));
+      const importedRows = names
+        .filter((name, index) => {
+          const exists = existingNames.has(name);
+          if (exists) result.skipped += 1;
+          if (!exists) result.imported += 1;
+          return !exists;
+        })
+        .map(makeImportedStoreRow);
+      const nextRows = [...cleanedRows, ...importedRows];
+      window.localStorage.setItem("erp:store-rows", JSON.stringify(nextRows));
+      return nextRows;
+    });
+    setStoreImportStatus(`${result.imported}개 업체 추가, ${result.skipped}개 중복 제외`);
+    return result;
+  };
 
   const saveStoreRow = (profile: { storeName: string; manager: string; contractPeriod: string; memo: string }) => {
     const normalizedName = profile.storeName.trim() || "신규 매장";
@@ -2062,9 +2165,9 @@ export default function HomePage() {
       case "weeklyFlow":
         return <WeeklyFlowPage setView={navigateTo} />;
       default:
-        return <Dashboard setView={navigateTo} rows={storeRows} />;
+        return <Dashboard setView={navigateTo} rows={storeRows} onImportStores={importStoresFromExcel} importStatus={storeImportStatus} />;
     }
-  }, [activeView, previousView, storeRows]);
+  }, [activeView, previousView, storeRows, storeImportStatus]);
 
   return (
     <div className="erp-shell">

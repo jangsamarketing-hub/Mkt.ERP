@@ -293,6 +293,7 @@ export function StoreInfoPage({
   const [profile, setProfile] = useState<StoreProfile>(defaultStoreProfile);
   const [selectedStoreId, setSelectedStoreId] = useState(stores?.[0]?.id ?? "");
   const [goldenKeywordJobs, setGoldenKeywordJobs] = useState<GoldenKeywordJob[]>([]);
+  const [registeredGoldenKeywords, setRegisteredGoldenKeywords] = useState<Record<string, boolean>>({});
   const [storeTasks, setStoreTasks] = useState<StoreTaskItem[]>(() => hydrateTasks(weeklyTasks));
   const [memoDraft, setMemoDraft] = useState("");
   const [selectedMemoDate, setSelectedMemoDate] = useState("");
@@ -325,6 +326,7 @@ export function StoreInfoPage({
     const savedSetupItems = window.localStorage.getItem("erp:setup-items-by-month");
     const savedSetupPhotos = window.localStorage.getItem("erp:setup-photos");
     const savedGoldenJobs = window.localStorage.getItem("erp-golden-keyword-jobs");
+    const savedRegisteredKeywords = window.localStorage.getItem("erp:registered-golden-keywords");
     if (savedProfile) {
       try {
         setProfile({ ...defaultStoreProfile, ...(JSON.parse(savedProfile) as StoreProfile) });
@@ -360,6 +362,13 @@ export function StoreInfoPage({
         window.localStorage.removeItem("erp-golden-keyword-jobs");
       }
     }
+    if (savedRegisteredKeywords) {
+      try {
+        setRegisteredGoldenKeywords(JSON.parse(savedRegisteredKeywords) as Record<string, boolean>);
+      } catch {
+        window.localStorage.removeItem("erp:registered-golden-keywords");
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -382,6 +391,10 @@ export function StoreInfoPage({
   useEffect(() => {
     window.localStorage.setItem("erp:setup-photos", JSON.stringify(setupPhotos));
   }, [setupPhotos]);
+
+  useEffect(() => {
+    window.localStorage.setItem("erp:registered-golden-keywords", JSON.stringify(registeredGoldenKeywords));
+  }, [registeredGoldenKeywords]);
 
   const saveProfile = () => {
     window.localStorage.setItem("erp:store-profile", JSON.stringify(profile));
@@ -514,6 +527,13 @@ export function StoreInfoPage({
     [selectedGoldenJobs],
   );
 
+  const goldenKeywordKey = (keyword: string) => `${selectedStoreId || profile.storeName}:${keyword}`;
+
+  const toggleRegisteredGoldenKeyword = (keyword: string) => {
+    const key = goldenKeywordKey(keyword);
+    setRegisteredGoldenKeywords((current) => ({ ...current, [key]: !current[key] }));
+  };
+
   const updateSetupItem = (id: string, patch: Partial<SetupItem>) => {
     setSetupItemsByMonth((months) => {
       const items = months[selectedSetupMonth] ?? defaultSetupItems;
@@ -625,9 +645,16 @@ export function StoreInfoPage({
         <p className="store-help-text">유입/키워드 탭에서 꿀키워드 탐색기를 실행하면 이 매장에 자동으로 쌓입니다.</p>
         <div className="golden-keyword-chip-list">
           {goldenKeywords.map((row) => (
-            <span key={`${row.keyword}-${row.volume}`}>
-              {row.keyword} · 검색량 {row.volume} · 지도 {row.pageCount}p
-            </span>
+            <button
+              className={registeredGoldenKeywords[goldenKeywordKey(row.keyword)] ? "golden-keyword-chip registered" : "golden-keyword-chip"}
+              key={`${row.keyword}-${row.volume}`}
+              onClick={() => toggleRegisteredGoldenKeyword(row.keyword)}
+              type="button"
+            >
+              <strong>{row.keyword}</strong>
+              <span>검색량 {row.volume} · 지도 {row.pageCount}p</span>
+              <em>{registeredGoldenKeywords[goldenKeywordKey(row.keyword)] ? "등록완료" : "미등록"}</em>
+            </button>
           ))}
           {goldenKeywords.length === 0 && <em>아직 등록된 꿀키워드가 없습니다.</em>}
         </div>
