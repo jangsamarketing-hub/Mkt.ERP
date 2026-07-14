@@ -933,11 +933,12 @@ const makeRoutine = (day: string, index: number, task: string, memo: string): Ad
   id: `${day}-${index}-${task}`,
   task,
   memo,
-  checked: true,
+  checked: false,
 });
 
 function AdminDailyPage({ rows = stores }: { rows?: StoreRow[] }) {
-  const [selectedDay, setSelectedDay] = useState("월");
+  const todayDay = ["일", "월", "화", "수", "목", "금", "토"][new Date().getDay()];
+  const [selectedDay, setSelectedDay] = useState(todayDay === "토" || todayDay === "일" ? "월" : todayDay);
   const [editingRoutineId, setEditingRoutineId] = useState("");
   const [dayRoutines, setDayRoutines] = useState<Record<string, AdminRoutineItem[]>>({
     월: [
@@ -1338,7 +1339,7 @@ function InflowPage() {
   const hasSelectedStore = Boolean(selectedInflowStoreId);
   const selectedInflowStore = stores.find((store) => store.id === selectedInflowStoreId);
   const selectedUploads = placeCsvUploads.filter((upload) => upload.storeId === selectedInflowStoreId);
-  const latestUpload = selectedUploads[0];
+  const latestUpload = [...selectedUploads].sort((a, b) => b.weekStart.localeCompare(a.weekStart))[0];
   const displayedKeywords = latestUpload?.keywordRows.length ? latestUpload.keywordRows : inflowKeywords;
   const displayedChannels = latestUpload?.channelRows.length ? latestUpload.channelRows : inflowChannels;
   const uploadedSummary = latestUpload?.summary ?? {};

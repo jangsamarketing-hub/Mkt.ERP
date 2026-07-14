@@ -62,6 +62,16 @@ type GoldenKeywordJob = {
   rows: { keyword: string; volume: number; pageCount: number; estimatedStores: number; result: string }[];
 };
 
+type CallHistory = {
+  id: string;
+  storeId: string;
+  storeName: string;
+  date: string;
+  createdAt: string;
+  summary: string;
+  candidates: string[];
+};
+
 type StoreProfile = {
   clientName: string;
   storeName: string;
@@ -294,6 +304,7 @@ export function StoreInfoPage({
   const [selectedStoreId, setSelectedStoreId] = useState(stores?.[0]?.id ?? "");
   const [goldenKeywordJobs, setGoldenKeywordJobs] = useState<GoldenKeywordJob[]>([]);
   const [registeredGoldenKeywords, setRegisteredGoldenKeywords] = useState<Record<string, boolean>>({});
+  const [callHistories, setCallHistories] = useState<CallHistory[]>([]);
   const [storeTasks, setStoreTasks] = useState<StoreTaskItem[]>(() => hydrateTasks(weeklyTasks));
   const [memoDraft, setMemoDraft] = useState("");
   const [selectedMemoDate, setSelectedMemoDate] = useState("");
@@ -327,6 +338,7 @@ export function StoreInfoPage({
     const savedSetupPhotos = window.localStorage.getItem("erp:setup-photos");
     const savedGoldenJobs = window.localStorage.getItem("erp-golden-keyword-jobs");
     const savedRegisteredKeywords = window.localStorage.getItem("erp:registered-golden-keywords");
+    const savedCallHistories = window.localStorage.getItem("erp:call-histories");
     if (savedProfile) {
       try {
         setProfile({ ...defaultStoreProfile, ...(JSON.parse(savedProfile) as StoreProfile) });
@@ -367,6 +379,13 @@ export function StoreInfoPage({
         setRegisteredGoldenKeywords(JSON.parse(savedRegisteredKeywords) as Record<string, boolean>);
       } catch {
         window.localStorage.removeItem("erp:registered-golden-keywords");
+      }
+    }
+    if (savedCallHistories) {
+      try {
+        setCallHistories(JSON.parse(savedCallHistories) as CallHistory[]);
+      } catch {
+        window.localStorage.removeItem("erp:call-histories");
       }
     }
   }, []);
@@ -657,6 +676,27 @@ export function StoreInfoPage({
             </button>
           ))}
           {goldenKeywords.length === 0 && <em>아직 등록된 꿀키워드가 없습니다.</em>}
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="section-headline">
+          <div>
+            <h2>통화 히스토리</h2>
+            <p className="plain-text">일일 업무에서 저장한 통화 요약과 업무 후보를 이 매장 기준으로 확인합니다.</p>
+          </div>
+          <strong>{callHistories.filter((history) => history.storeId === selectedStoreId).length}건</strong>
+        </div>
+        <div className="call-history-list">
+          {callHistories.filter((history) => history.storeId === selectedStoreId).map((history) => (
+            <details className="call-history-card" key={history.id}>
+              <summary>{history.date} · {history.createdAt} · 후보 {history.candidates.length}개</summary>
+              <pre>{history.summary}</pre>
+            </details>
+          ))}
+          {callHistories.filter((history) => history.storeId === selectedStoreId).length === 0 && (
+            <p className="plain-text">이 매장에 저장된 통화 히스토리가 없습니다.</p>
+          )}
         </div>
       </section>
 
