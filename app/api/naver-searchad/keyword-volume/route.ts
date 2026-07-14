@@ -68,9 +68,10 @@ export async function POST(request: Request) {
 
     const payload = await response.json();
     const keywordList = (payload.keywordList ?? []) as SearchAdKeyword[];
-    for (const item of keywordList) {
-      const keyword = item.relKeyword ?? "";
-      if (!chunk.includes(keyword)) continue;
+    for (const [index, item] of keywordList.entries()) {
+      const returnedKeyword = item.relKeyword ?? "";
+      const keyword = chunk.includes(returnedKeyword) ? returnedKeyword : chunk[index] ?? returnedKeyword;
+      if (!keyword) continue;
       const pc = toNumber(item.monthlyPcQcCnt);
       const mobile = toNumber(item.monthlyMobileQcCnt);
       rows.push({ keyword, pc, mobile, volume: pc + mobile });

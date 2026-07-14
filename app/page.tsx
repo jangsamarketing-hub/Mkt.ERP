@@ -296,6 +296,19 @@ type GoldenKeywordJob = {
   rows: KeywordAnalysisRow[];
 };
 
+type SalesUploadSummary = {
+  fileName: string;
+  totalSales: number;
+  transactionCount: number;
+  newCustomers: number;
+  repeatCustomers: number;
+  revisitRate: number;
+  averageTicket: number;
+  dateRows: { label: string; amount: number; count: number }[];
+  hourRows: { label: string; amount: number; count: number }[];
+  weekdayRows: { label: string; amount: number; count: number }[];
+};
+
 const tagKeywords = [
   "성수동제철스시",
   "성수역메로구이",
@@ -545,54 +558,193 @@ function getUploadWeekRange(dateText: string) {
   return { weekStart: format(monday), weekEnd: format(sunday) };
 }
 
+function splitCsvLine(line: string) {
+  const cells: string[] = [];
+  let current = "";
+  let inQuotes = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const next = line[index + 1];
+    if (char === "\"" && next === "\"") {
+      current += "\"";
+      index += 1;
+    } else if (char === "\"") {
+      inQuotes = !inQuotes;
+    } else if ((char === "," || char === "\t") && !inQuotes) {
+      cells.push(current.trim());
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  cells.push(current.trim());
+  return cells.map((cell) => cell.replace(/^\uFEFF/, "").replace(/^"|"$/g, "").trim());
+}
+
+function toCsvNumber(value: unknown) {
+  const normalized = String(value ?? "").replace(/[^\d.-]/g, "");
+  const numeric = Number(normalized);
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+
+function isKnownChannelLabel(label: string) {
+  return /(네이버지도|네이버검색|플레이스광고|지역소상공인|블로그|웹사이트|인스타그램|MY플레이스|카페|채널|검색|지도)/.test(label);
+}
+
 function parseLooseCsvRows(csvText: string) {
-  const lines = csvText.split(/\r?\n/);
+  const lines = csvText.replace(/^\uFEFF/, "").split(/\r?\n/).filter((line) => line.trim());
   const sectionRows = (sectionTitle: string) => {
     const start = lines.findIndex((line) => line.trim() === sectionTitle);
     if (start < 0) return [];
     const end = lines.findIndex((line, index) => index > start && /^\[.+\]$/.test(line.trim()));
     return lines.slice(start + 1, end < 0 ? undefined : end).filter(Boolean);
   };
-  const toCells = (line: string) => line.split(/\t|,/).map((cell) => cell.replace(/^"|"$/g, "").trim());
+  const toCells = splitCsvLine;
   const metricSummary = sectionRows("[1. 리포트 요약 지표]")
     .map(toCells)
     .reduce<Record<string, number>>((summary, cells) => {
-      const key = cells[0];
-      const current = Number(cells[2]);
-      if (key && Number.isFinite(current)) summary[key] = current;
+      const key = cells[0] ?? "";
+      const current = toCsvNumber(cells[2] ?? cells[1]);
+      if (key && current) {
+        if (/플레이스|유입|방문/.test(key)) summary.placeInflow = current;
+        else if (/예약|주문/.test(key)) summary.reservationOrder = current;
+        else if (/스마트|전화|통화/.test(key)) summary.smartCall = current;
+        else if (/리뷰/.test(key)) summary.reviewRegister = current;
+        summary[key] = current;
+      }
       return summary;
     }, {});
   const keywordRows = sectionRows("[2. 유입 키워드]")
     .map(toCells)
-    .filter((cells) => cells[0] && Number.isFinite(Number(cells[1])))
-    .map((cells) => [cells[0], Number(cells[1]), 0, cells[2] ?? ""]);
+    .filter((cells) => cells[0] && toCsvNumber(cells[1]) > 0)
+    .map((cells) => [cells[0], toCsvNumber(cells[1]), 0, cells[2] ?? ""]);
   const channelRows = sectionRows("[3. 유입 채널]")
     .map(toCells)
-    .filter((cells) => cells[0] && Number.isFinite(Number(cells[1])))
-    .map((cells) => [cells[0], Number(cells[1]), 0, ""]);
+    .filter((cells) => cells[0] && toCsvNumber(cells[1]) > 0)
+    .map((cells) => [cells[0], toCsvNumber(cells[1]), 0, ""]);
 
   if (keywordRows.length || channelRows.length) {
     return { summary: metricSummary, keywordRows, channelRows };
   }
 
   const rows = lines
-    .map((line) => line.split(/\t|,/).map((cell) => cell.replace(/^"|"$/g, "").trim()).filter(Boolean))
+    .map((line) => splitCsvLine(line).filter(Boolean))
     .filter((cells) => cells.length >= 2);
 
   const metricRows = rows
     .map((cells) => {
       const label = cells.find((cell) => /[가-힣A-Za-z]/.test(cell)) ?? "";
-      const numeric = cells
-        .map((cell) => Number(cell.replace(/[^\d.-]/g, "")))
-        .find((value) => Number.isFinite(value) && value > 0);
+      const numeric = cells.map(toCsvNumber).find((value) => value > 0);
       return label && numeric ? [label, numeric, 0, ""] : null;
     })
     .filter((row): row is (string | number)[] => Boolean(row));
 
+  const guessedChannelRows = metricRows.filter((row) => isKnownChannelLabel(String(row[0]))).slice(0, 40);
+  const guessedKeywordRows = metricRows.filter((row) => !isKnownChannelLabel(String(row[0]))).slice(0, 200);
+
   return {
     summary: metricSummary,
-    keywordRows: metricRows.slice(0, 80),
-    channelRows: metricRows.slice(80, 100),
+    keywordRows: guessedKeywordRows,
+    channelRows: guessedChannelRows,
+  };
+}
+
+function normalizeHeader(value: string) {
+  return value.replace(/\s/g, "").toLowerCase();
+}
+
+function findHeader(headers: string[], patterns: RegExp[]) {
+  return headers.find((header) => patterns.some((pattern) => pattern.test(normalizeHeader(header)))) ?? "";
+}
+
+function addGroupedMetric(map: Map<string, { amount: number; count: number }>, label: string, amount: number) {
+  if (!label) return;
+  const current = map.get(label) ?? { amount: 0, count: 0 };
+  current.amount += amount;
+  current.count += 1;
+  map.set(label, current);
+}
+
+function parseDateLabel(value: unknown) {
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  const text = String(value ?? "").trim();
+  const match = text.match(/(\d{4})[./-]?(\d{1,2})[./-]?(\d{1,2})/);
+  if (!match) return "";
+  return `${match[1]}-${match[2].padStart(2, "0")}-${match[3].padStart(2, "0")}`;
+}
+
+function parseHourLabel(value: unknown) {
+  const text = String(value ?? "").trim();
+  const match = text.match(/(\d{1,2})[:시]/);
+  return match ? `${match[1].padStart(2, "0")}시` : "";
+}
+
+function summarizeSalesRows(rows: Record<string, unknown>[], fileName: string): SalesUploadSummary {
+  const headers = Array.from(new Set(rows.flatMap((row) => Object.keys(row))));
+  const dateKey = findHeader(headers, [/거래일/, /승인일/, /매출일/, /일자/]);
+  const timeKey = findHeader(headers, [/거래시간/, /승인시간/, /시간/]);
+  const cardCompanyKey = findHeader(headers, [/카드사/, /매입사/, /발급사/]);
+  const cardNumberKey = findHeader(headers, [/카드번호/, /카드no/, /카드/]);
+  const approvalKey = findHeader(headers, [/승인번호/, /승인no/]);
+  const amountKey = findHeader(headers, [/승인금액/, /이용금액/, /매출금액/, /금액/, /매출/]);
+  const statusKey = findHeader(headers, [/상태/, /구분/, /거래구분/]);
+  const dateMap = new Map<string, { amount: number; count: number }>();
+  const hourMap = new Map<string, { amount: number; count: number }>();
+  const weekdayMap = new Map<string, { amount: number; count: number }>();
+  const customerKeys = new Set<string>();
+  const transactionKeys = new Set<string>();
+  let totalSales = 0;
+  let transactionCount = 0;
+  let newCustomers = 0;
+  let repeatCustomers = 0;
+
+  rows.forEach((row) => {
+    const rawAmount = toCsvNumber(row[amountKey]);
+    if (!rawAmount) return;
+    const statusText = String(row[statusKey] ?? "");
+    const isCancel = /취소|반품|환불/.test(statusText) || rawAmount < 0;
+    const amount = Math.abs(rawAmount) * (isCancel ? -1 : 1);
+    const date = parseDateLabel(row[dateKey]);
+    const hour = parseHourLabel(row[timeKey]);
+    const cardKey = `${row[cardCompanyKey] ?? ""}-${row[cardNumberKey] ?? ""}`.trim();
+    const transactionKey = `${date}-${row[timeKey] ?? ""}-${row[cardCompanyKey] ?? ""}-${row[cardNumberKey] ?? ""}-${row[approvalKey] ?? ""}-${amount}`;
+    if (transactionKeys.has(transactionKey)) return;
+    transactionKeys.add(transactionKey);
+    totalSales += amount;
+    if (amount > 0) {
+      transactionCount += 1;
+      if (cardKey && !customerKeys.has(cardKey)) {
+        customerKeys.add(cardKey);
+        newCustomers += 1;
+      } else {
+        repeatCustomers += 1;
+      }
+      addGroupedMetric(dateMap, date, amount);
+      addGroupedMetric(hourMap, hour, amount);
+      if (date) {
+        const weekday = ["일", "월", "화", "수", "목", "금", "토"][new Date(`${date}T00:00:00`).getDay()];
+        addGroupedMetric(weekdayMap, weekday, amount);
+      }
+    }
+  });
+
+  const toRows = (map: Map<string, { amount: number; count: number }>) =>
+    Array.from(map.entries()).map(([label, value]) => ({ label, amount: value.amount, count: value.count }));
+  const customerTotal = newCustomers + repeatCustomers;
+  return {
+    fileName,
+    totalSales,
+    transactionCount,
+    newCustomers,
+    repeatCustomers,
+    revisitRate: customerTotal ? (repeatCustomers / customerTotal) * 100 : 0,
+    averageTicket: transactionCount ? Math.round(totalSales / transactionCount) : 0,
+    dateRows: toRows(dateMap).sort((a, b) => a.label.localeCompare(b.label)),
+    hourRows: toRows(hourMap).sort((a, b) => a.label.localeCompare(b.label)),
+    weekdayRows: ["월", "화", "수", "목", "금", "토", "일"].map((label) => {
+      const value = weekdayMap.get(label) ?? { amount: 0, count: 0 };
+      return { label, amount: value.amount, count: value.count };
+    }),
   };
 }
 
@@ -1281,15 +1433,23 @@ function InflowPage() {
     }
 
     const lowCompetitionRows = mapCheckedRows.filter((row) => row.pageCount !== null && row.pageCount < 3);
-    setMiningStatus(`${lowCompetitionRows.length}개 저경쟁 키워드 검색량 조회 중`);
+    const allMapBlocked = mapCheckedRows.length > 0 && mapCheckedRows.every((row) => row.result === "지도차단" || row.result === "지도확인실패");
+    const volumeTargets = lowCompetitionRows.length > 0 ? lowCompetitionRows : allMapBlocked ? mapCheckedRows.slice(0, 80) : [];
+    setMiningStatus(
+      lowCompetitionRows.length > 0
+        ? `${lowCompetitionRows.length}개 저경쟁 키워드 검색량 조회 중`
+        : allMapBlocked
+          ? "지도 확인이 차단되어 검색광고 조회수 기준 임시 분석 중"
+          : "저경쟁 키워드가 없어 검색량 조회를 건너뜁니다",
+    );
 
     let volumeMap = new Map<string, number>();
-    if (lowCompetitionRows.length > 0) {
+    if (volumeTargets.length > 0) {
       try {
         const response = await fetch("/api/naver-searchad/keyword-volume", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ keywords: lowCompetitionRows.map((row) => row.keyword) }),
+          body: JSON.stringify({ keywords: volumeTargets.map((row) => row.keyword) }),
         });
         if (response.ok) {
           const payload = await response.json();
@@ -1319,7 +1479,11 @@ function InflowPage() {
     };
     setActiveAnalysisRows(rows);
     setGoldenKeywordJobs((jobs) => [job, ...jobs]);
-    setMiningStatus(`완료: 지도 3페이지 미만 ${rows.filter((row) => row.result === "꿀키워드").length}개`);
+    setMiningStatus(
+      allMapBlocked
+        ? "완료: 지도 확인이 차단되어 조회수만 표시했습니다. 꿀키워드 확정은 지도 워커 연동이 필요합니다."
+        : `완료: 지도 3페이지 미만 ${rows.filter((row) => row.result === "꿀키워드").length}개`,
+    );
   };
 
   return (
@@ -1538,12 +1702,44 @@ function InflowPage() {
 }
 
 function SalesPage() {
+  const [salesUpload, setSalesUpload] = useState<SalesUploadSummary | null>(null);
+  const [salesUploadMessage, setSalesUploadMessage] = useState("");
+  const displaySales = salesUpload?.totalSales ?? 33646500;
+  const displayNewCustomers = salesUpload?.newCustomers ?? 214;
+  const displayRevisitRate = salesUpload?.revisitRate ?? 57.2;
+  const displayAverageTicket = salesUpload?.averageTicket ?? 67293;
+
+  const uploadSalesFile = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
+      const firstSheetName = workbook.SheetNames[0];
+      const firstSheet = workbook.Sheets[firstSheetName];
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(firstSheet, { defval: "", raw: false });
+      const summary = summarizeSalesRows(rows, file.name);
+      setSalesUpload(summary);
+      setSalesUploadMessage(`${file.name} 업로드 완료 · ${summary.transactionCount.toLocaleString("ko-KR")}건 분석`);
+    } catch {
+      setSalesUploadMessage("엑셀 파일을 읽지 못했습니다. 여신금융협회에서 받은 원본 .xls/.xlsx 파일인지 확인하세요.");
+    }
+  };
+
   return (
     <>
-      <PageHeader title="여신금융 매출 데이터" description="엑셀 업로드 기반 매출, 신규/재방문, 목표매출 필요 고객수를 확인합니다." />
+      <PageHeader
+        title="여신금융 매출 데이터"
+        description="엑셀 업로드 기반 매출, 신규/재방문, 목표매출 필요 고객수를 확인합니다."
+        actions={
+          <label className="file-upload-button">
+            엑셀 업로드
+            <input accept=".xls,.xlsx" onChange={(event) => uploadSalesFile(event.target.files?.[0])} type="file" />
+          </label>
+        }
+      />
       <StoreContextBar />
       <div className="success-banner">
-        <span>여신금융 ID 설정이 완료되었습니다.</span>
+        <span>{salesUploadMessage || "여신금융 ID 설정이 완료되었습니다."}</span>
         <button className="btn btn-orange" type="button">재설정</button>
       </div>
       <div className="filter-row toolbar">
@@ -1556,11 +1752,35 @@ function SalesPage() {
         <button className="btn btn-primary" type="button">조회</button>
       </div>
       <div className="detail-grid">
-        <MetricCard label="총 매출" value="33,646,500원" tone="red" />
-        <MetricCard label="신규 고객" value="214명" tone="green" />
-        <MetricCard label="재방문율" value="57.2%" />
-        <MetricCard label="평균 객단가" value="67,293원" />
+        <MetricCard label="총 매출" value={`${formatNumber(displaySales)}원`} tone="red" />
+        <MetricCard label="신규 고객" value={`${formatNumber(displayNewCustomers)}명`} tone="green" />
+        <MetricCard label="재방문율" value={`${displayRevisitRate.toFixed(1)}%`} />
+        <MetricCard label="평균 객단가" value={`${formatNumber(displayAverageTicket)}원`} />
       </div>
+      {salesUpload && (
+        <section className="panel">
+          <div className="section-headline">
+            <div>
+              <h2>업로드 분석 결과</h2>
+              <p className="plain-text">{salesUpload.fileName} · 승인 {salesUpload.transactionCount.toLocaleString("ko-KR")}건 · 재방문 {salesUpload.repeatCustomers.toLocaleString("ko-KR")}건</p>
+            </div>
+          </div>
+          <div className="sales-upload-table">
+            <div className="analysis-head">
+              <span>날짜</span>
+              <span>매출</span>
+              <span>결제수</span>
+            </div>
+            {salesUpload.dateRows.slice(0, 14).map((row) => (
+              <div className="analysis-row" key={row.label}>
+                <strong>{row.label}</strong>
+                <span>{formatNumber(row.amount)}원</span>
+                <span>{formatNumber(row.count)}건</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
       <section className="panel">
         <div className="section-headline">
           <h2>날짜별 매출 + 결제수</h2>
