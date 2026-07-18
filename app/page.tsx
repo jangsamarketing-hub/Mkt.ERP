@@ -343,17 +343,28 @@ type GoldenKeywordJob = {
   rows: KeywordAnalysisRow[];
 };
 
-type SalesUploadSummary = {
-  fileName: string;
-  totalSales: number;
-  transactionCount: number;
-  newCustomers: number;
-  repeatCustomers: number;
-  revisitRate: number;
-  averageTicket: number;
-  dateRows: { label: string; amount: number; count: number }[];
-  hourRows: { label: string; amount: number; count: number }[];
-  weekdayRows: { label: string; amount: number; count: number }[];
+type ServerCardImport = {
+  id: string;
+  file_name: string;
+  period_start: string;
+  period_end: string;
+  net_sales: number;
+  net_payment_count: number;
+  amount_per_payment: number | null;
+  uploaded_at: string;
+};
+
+type ServerCardData = {
+  imports: ServerCardImport[];
+  daily: Array<{
+    transaction_date: string;
+    net_sales: number;
+    net_payment_count: number;
+    amount_per_payment: number | null;
+  }>;
+  hourly: Array<{ hour: number; netSales: number; netPaymentCount: number }>;
+  weekdays: Array<{ weekday: number; netSales: number; netPaymentCount: number }>;
+  totals: { netSales: number; netPaymentCount: number; amountPerPayment: number | null };
 };
 
 const tagKeywords = [
@@ -696,175 +707,27 @@ function parseLooseCsvRows(csvText: string) {
   };
 }
 
-function normalizeHeader(value: string) {
-  return value.replace(/\s/g, "").toLowerCase();
-}
+function SalesComboChart({ rows }: { rows: ServerCardData["daily"] }) {
+  const points = rows.slice(-31);
+  const maxSales = Math.max(...points.map((row) => Number(row.net_sales)), 1);
+  const maxCount = Math.max(...points.map((row) => Number(row.net_payment_count)), 1);
 
-function findHeader(headers: string[], patterns: RegExp[]) {
-  return headers.find((header) => patterns.some((pattern) => pattern.test(normalizeHeader(header)))) ?? "";
-}
-
-function addGroupedMetric(map: Map<string, { amount: number; count: number }>, label: string, amount: number) {
-  if (!label) return;
-  const current = map.get(label) ?? { amount: 0, count: 0 };
-  current.amount += amount;
-  current.count += 1;
-  map.set(label, current);
-}
-
-function parseDateLabel(value: unknown) {
-  if (value instanceof Date) return value.toISOString().slice(0, 10);
-  const text = String(value ?? "").trim();
-  const match = text.match(/(\d{4})[./-]?(\d{1,2})[./-]?(\d{1,2})/);
-  if (!match) return "";
-  return `${match[1]}-${match[2].padStart(2, "0")}-${match[3].padStart(2, "0")}`;
-}
-
-function parseHourLabel(value: unknown) {
-  const text = String(value ?? "").trim();
-  const match = text.match(/(\d{1,2})[:시]/);
-  return match ? `${match[1].padStart(2, "0")}시` : "";
-}
-
-function summarizeSalesRows(rows: Record<string, unknown>[], fileName: string): SalesUploadSummary {
-  const headers = Array.from(new Set(rows.flatMap((row) => Object.keys(row))));
-  const dateKey = findHeader(headers, [/거래일/, /승인일/, /매출일/, /일자/]);
-  const timeKey = findHeader(headers, [/거래시간/, /승인시간/, /시간/]);
-  const cardCompanyKey = findHeader(headers, [/카드사/, /매입사/, /발급사/]);
-  const cardNumberKey = findHeader(headers, [/카드번호/, /카드no/, /카드/]);
-  const approvalKey = findHeader(headers, [/승인번호/, /승인no/]);
-  const amountKey = findHeader(headers, [/승인금액/, /이용금액/, /매출금액/, /금액/, /매출/]);
-  const statusKey = findHeader(headers, [/상태/, /구분/, /거래구분/]);
-  const dateMap = new Map<string, { amount: number; count: number }>();
-  const hourMap = new Map<string, { amount: number; count: number }>();
-  const weekdayMap = new Map<string, { amount: number; count: number }>();
-  const customerKeys = new Set<string>();
-  const transactionKeys = new Set<string>();
-  let totalSales = 0;
-  let transactionCount = 0;
-  let newCustomers = 0;
-  let repeatCustomers = 0;
-
-  rows.forEach((row) => {
-    const rawAmount = toCsvNumber(row[amountKey]);
-    if (!rawAmount) return;
-    const statusText = String(row[statusKey] ?? "");
-    const isCancel = /취소|반품|환불/.test(statusText) || rawAmount < 0;
-    const amount = Math.abs(rawAmount) * (isCancel ? -1 : 1);
-    const date = parseDateLabel(row[dateKey]);
-    const hour = parseHourLabel(row[timeKey]);
-    const cardKey = `${row[cardCompanyKey] ?? ""}-${row[cardNumberKey] ?? ""}`.trim();
-    const transactionKey = `${date}-${row[timeKey] ?? ""}-${row[cardCompanyKey] ?? ""}-${row[cardNumberKey] ?? ""}-${row[approvalKey] ?? ""}-${amount}`;
-    if (transactionKeys.has(transactionKey)) return;
-    transactionKeys.add(transactionKey);
-    totalSales += amount;
-    if (amount > 0) {
-      transactionCount += 1;
-      if (cardKey && !customerKeys.has(cardKey)) {
-        customerKeys.add(cardKey);
-        newCustomers += 1;
-      } else {
-        repeatCustomers += 1;
-      }
-      addGroupedMetric(dateMap, date, amount);
-      addGroupedMetric(hourMap, hour, amount);
-      if (date) {
-        const weekday = ["일", "월", "화", "수", "목", "금", "토"][new Date(`${date}T00:00:00`).getDay()];
-        addGroupedMetric(weekdayMap, weekday, amount);
-      }
-    }
-  });
-
-  const toRows = (map: Map<string, { amount: number; count: number }>) =>
-    Array.from(map.entries()).map(([label, value]) => ({ label, amount: value.amount, count: value.count }));
-  const customerTotal = newCustomers + repeatCustomers;
-  return {
-    fileName,
-    totalSales,
-    transactionCount,
-    newCustomers,
-    repeatCustomers,
-    revisitRate: customerTotal ? (repeatCustomers / customerTotal) * 100 : 0,
-    averageTicket: transactionCount ? Math.round(totalSales / transactionCount) : 0,
-    dateRows: toRows(dateMap).sort((a, b) => a.label.localeCompare(b.label)),
-    hourRows: toRows(hourMap).sort((a, b) => a.label.localeCompare(b.label)),
-    weekdayRows: ["월", "화", "수", "목", "금", "토", "일"].map((label) => {
-      const value = weekdayMap.get(label) ?? { amount: 0, count: 0 };
-      return { label, amount: value.amount, count: value.count };
-    }),
-  };
-}
-
-function SalesComboChart() {
-  const points = [
-    ["06-11", 82, 17],
-    ["06-12", 88, 16],
-    ["06-13", 116, 18],
-    ["06-14", 110, 16],
-    ["06-15", 54, 14],
-    ["06-16", 38, 6],
-    ["06-17", 68, 11],
-    ["06-18", 96, 15],
-    ["06-19", 112, 23],
-    ["06-20", 92, 18],
-    ["06-21", 102, 16],
-    ["06-22", 74, 12],
-    ["06-23", 80, 11],
-    ["06-24", 104, 18],
-    ["06-25", 58, 13],
-    ["06-26", 124, 17],
-    ["06-27", 66, 12],
-    ["06-28", 76, 13],
-    ["06-29", 81, 12],
-    ["06-30", 78, 13],
-    ["07-01", 96, 16],
-    ["07-02", 103, 18],
-    ["07-03", 172, 23],
-    ["07-04", 104, 18],
-    ["07-05", 96, 16],
-    ["07-06", 44, 9],
-    ["07-07", 42, 10],
-    ["07-08", 70, 11],
-    ["07-09", 144, 19],
-    ["07-10", 62, 12],
-  ];
+  if (!points.length) return <p className="plain-text">선택한 기간에 업로드된 매출 데이터가 없습니다.</p>;
 
   return (
     <div className="combo-chart">
       <div className="combo-chart-grid">
-        {points.map(([date, sales, count]) => (
-          <div className="combo-day" key={String(date)}>
-            <i style={{ height: `${sales}%` }} />
-            <b style={{ bottom: `${Math.max(8, Number(count) * 3.1)}px` }} />
-            <span>{date}</span>
+        {points.map((row) => (
+          <div className="combo-day" key={row.transaction_date} title={`${formatNumber(Number(row.net_sales))}원 · ${formatNumber(Number(row.net_payment_count))}건`}>
+            <i style={{ height: `${Math.max(4, (Number(row.net_sales) / maxSales) * 100)}%` }} />
+            <b style={{ bottom: `${Math.max(8, (Number(row.net_payment_count) / maxCount) * 88)}px` }} />
+            <span>{row.transaction_date.slice(5)}</span>
           </div>
         ))}
       </div>
       <div className="chart-legend">
         <span><i className="legend-line" /> 결제수</span>
         <span><i className="legend-bar" /> 총 매출</span>
-      </div>
-    </div>
-  );
-}
-
-function TimeSalesChart() {
-  return (
-    <div className="sales-line-card">
-      <svg aria-hidden="true" viewBox="0 0 640 220">
-        <defs>
-          <linearGradient id="salesArea" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.28" />
-            <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.03" />
-          </linearGradient>
-        </defs>
-        <path d="M0 112 C60 132 80 146 120 168 C170 198 230 204 290 198 C355 190 390 166 426 96 C458 36 504 42 536 64 C586 98 604 76 640 36 L640 220 L0 220 Z" fill="url(#salesArea)" />
-        <path d="M0 112 C60 132 80 146 120 168 C170 198 230 204 290 198 C355 190 390 166 426 96 C458 36 504 42 536 64 C586 98 604 76 640 36" fill="none" stroke="#2563eb" strokeWidth="3" />
-      </svg>
-      <div className="chart-axis">
-        {["0시", "4시", "8시", "12시", "16시", "20시", "23시"].map((label) => (
-          <span key={label}>{label}</span>
-        ))}
       </div>
     </div>
   );
@@ -1862,26 +1725,112 @@ function InflowPage() {
 }
 
 function SalesPage() {
-  const [salesUpload, setSalesUpload] = useState<SalesUploadSummary | null>(null);
+  const now = new Date();
+  const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const [erpStores, setErpStores] = useState<ErpStoreOption[]>([]);
+  const [selectedSalesStoreId, setSelectedSalesStoreId] = useState("");
+  const [rangeStart, setRangeStart] = useState(`${defaultMonth}-01`);
+  const [rangeEnd, setRangeEnd] = useState(new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10));
+  const [cardData, setCardData] = useState<ServerCardData | null>(null);
   const [salesUploadMessage, setSalesUploadMessage] = useState("");
-  const displaySales = salesUpload?.totalSales ?? 33646500;
-  const displayNewCustomers = salesUpload?.newCustomers ?? 214;
-  const displayRevisitRate = salesUpload?.revisitRate ?? 57.2;
-  const displayAverageTicket = salesUpload?.averageTicket ?? 67293;
+  const [queryVersion, setQueryVersion] = useState(0);
+  const [salesLoading, setSalesLoading] = useState(false);
+  const [goalMonths, setGoalMonths] = useState(6);
+  const [targetSales, setTargetSales] = useState(60000000);
+  const [targetTicket, setTargetTicket] = useState(90000);
+  const [referenceCac, setReferenceCac] = useState(2180);
+  const selectedSalesStore = erpStores.find((store) => store.id === selectedSalesStoreId);
+
+  useEffect(() => {
+    fetch("/api/erp/stores")
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("store query failed")))
+      .then((payload: { stores?: ErpStoreOption[] }) => setErpStores(payload.stores ?? []))
+      .catch(() => setSalesUploadMessage("매장 목록을 불러오지 못했습니다."));
+  }, []);
+
+  useEffect(() => {
+    if (!selectedSalesStoreId) {
+      setCardData(null);
+      setSalesUploadMessage("");
+      return;
+    }
+    const params = new URLSearchParams({ storeId: selectedSalesStoreId, start: rangeStart, end: rangeEnd });
+    setSalesLoading(true);
+    fetch(`/api/erp/card-uploads?${params}`)
+      .then(async (response) => {
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "매출 데이터를 불러오지 못했습니다.");
+        return payload as ServerCardData;
+      })
+      .then((payload) => {
+        setCardData(payload);
+        setSalesUploadMessage(payload.imports.length ? `${payload.imports.length}개 원본 파일의 기간 데이터를 조회했습니다.` : "선택한 기간에 업로드된 원본 파일이 없습니다.");
+      })
+      .catch((error) => setSalesUploadMessage(error instanceof Error ? error.message : "매출 데이터를 불러오지 못했습니다."))
+      .finally(() => setSalesLoading(false));
+  }, [selectedSalesStoreId, rangeStart, rangeEnd, queryVersion]);
+
+  const dailyStats = useMemo(() => {
+    const sales = (cardData?.daily ?? []).map((row) => Number(row.net_sales)).filter((value) => value > 0);
+    const tickets = (cardData?.daily ?? []).map((row) => Number(row.amount_per_payment)).filter((value) => value > 0);
+    const summarize = (values: number[]) => values.length ? {
+      min: Math.min(...values),
+      avg: Math.round(values.reduce((sum, value) => sum + value, 0) / values.length),
+      max: Math.max(...values),
+    } : null;
+    return { sales: summarize(sales), tickets: summarize(tickets) };
+  }, [cardData]);
+
+  const goalPlan = useMemo(() => {
+    const currentSales = cardData?.totals.netSales ?? 0;
+    const currentPayments = cardData?.totals.netPaymentCount ?? 0;
+    const months = Math.max(1, Math.min(12, goalMonths || 1));
+    const safeTargetSales = Math.max(0, targetSales || 0);
+    const safeTargetTicket = Math.max(1, targetTicket || 1);
+    const targetPayments = Math.ceil(safeTargetSales / safeTargetTicket);
+    const monthlyAdditionalPayments = Math.max(0, Math.ceil((targetPayments - currentPayments) / months));
+    const rows = Array.from({ length: months + 1 }, (_, index) => {
+      const ratio = index / months;
+      const sales = Math.round(currentSales + (safeTargetSales - currentSales) * ratio);
+      const payments = Math.round(currentPayments + (targetPayments - currentPayments) * ratio);
+      return { label: index === 0 ? "현재" : `${index}개월`, sales, payments };
+    });
+    return {
+      currentSales,
+      currentPayments,
+      currentTicket: cardData?.totals.amountPerPayment ?? 0,
+      targetPayments,
+      monthlyAdditionalPayments,
+      estimatedMonthlyBudget: monthlyAdditionalPayments * Math.max(0, referenceCac || 0),
+      rows,
+    };
+  }, [cardData, goalMonths, referenceCac, targetSales, targetTicket]);
 
   const uploadSalesFile = async (file: File | undefined) => {
     if (!file) return;
+    if (!selectedSalesStoreId) {
+      setSalesUploadMessage("먼저 매장을 선택하세요.");
+      return;
+    }
+    setSalesLoading(true);
     try {
-      const buffer = await file.arrayBuffer();
-      const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
-      const firstSheetName = workbook.SheetNames[0];
-      const firstSheet = workbook.Sheets[firstSheetName];
-      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(firstSheet, { defval: "", raw: false });
-      const summary = summarizeSalesRows(rows, file.name);
-      setSalesUpload(summary);
-      setSalesUploadMessage(`${file.name} 업로드 완료 · ${summary.transactionCount.toLocaleString("ko-KR")}건 분석`);
-    } catch {
-      setSalesUploadMessage("엑셀 파일을 읽지 못했습니다. 여신금융협회에서 받은 원본 .xls/.xlsx 파일인지 확인하세요.");
+      const form = new FormData();
+      form.append("storeId", selectedSalesStoreId);
+      form.append("file", file);
+      const response = await fetch("/api/erp/card-uploads", { method: "POST", body: form });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "업로드에 실패했습니다.");
+      const imported = payload.import as ServerCardImport;
+      setRangeStart(imported.period_start);
+      setRangeEnd(imported.period_end);
+      setSalesUploadMessage(payload.duplicate
+        ? `${file.name}은 이미 등록된 원본입니다. 저장된 데이터를 불러왔습니다.`
+        : `${file.name} 저장 완료 · 순매출 ${formatNumber(Number(imported.net_sales))}원 · 순결제 ${formatNumber(Number(imported.net_payment_count))}건`);
+      setQueryVersion((version) => version + 1);
+    } catch (error) {
+      setSalesUploadMessage(error instanceof Error ? error.message : "엑셀 파일을 처리하지 못했습니다.");
+    } finally {
+      setSalesLoading(false);
     }
   };
 
@@ -1889,53 +1838,62 @@ function SalesPage() {
     <>
       <PageHeader
         title="여신금융 매출 데이터"
-        description="엑셀 업로드 기반 매출, 신규/재방문, 목표매출 필요 고객수를 확인합니다."
+        description="여신금융 원본 엑셀을 매장별로 보관하고 순매출, 순결제건수, 건당 결제액을 확인합니다."
         actions={
-          <label className="file-upload-button">
-            엑셀 업로드
-            <input accept=".xls,.xlsx" onChange={(event) => uploadSalesFile(event.target.files?.[0])} type="file" />
+          <label className={selectedSalesStore ? "file-upload-button" : "file-upload-button disabled"}>
+            {salesLoading ? "처리중" : "엑셀 업로드"}
+            <input accept=".xls,.xlsx" disabled={!selectedSalesStore || salesLoading} onChange={(event) => uploadSalesFile(event.target.files?.[0])} type="file" />
           </label>
         }
       />
-      <StoreContextBar />
+      <div className="store-context selectable-context">
+        <select value={selectedSalesStoreId} onChange={(event) => setSelectedSalesStoreId(event.target.value)}>
+          <option value="">매장을 선택하세요</option>
+          {erpStores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}
+        </select>
+        {selectedSalesStore ? (
+          <>
+            <span>MID {selectedSalesStore.naver_mid || "미등록"}</span>
+            <span>담당자 {selectedSalesStore.manager_name || "미배정"}</span>
+            <span>관리 {selectedSalesStore.contract_period_weeks ?? 4}주</span>
+          </>
+        ) : <span>매장을 선택하면 매출 데이터가 표시됩니다.</span>}
+      </div>
       <div className="success-banner">
-        <span>{salesUploadMessage || "여신금융 ID 설정이 완료되었습니다."}</span>
-        <button className="btn btn-orange" type="button">재설정</button>
+        <span>{salesUploadMessage || "원본 XLS는 매장별 비공개 저장소와 Supabase 원장에 함께 보관됩니다."}</span>
       </div>
       <div className="filter-row toolbar">
         <span>시작일:</span>
-        <input className="date-input" type="date" defaultValue="2026-06-11" />
+        <input className="date-input" type="date" value={rangeStart} onChange={(event) => setRangeStart(event.target.value)} />
         <span>종료일:</span>
-        <input className="date-input" type="date" defaultValue="2026-07-11" />
-        <button className="btn btn-light" type="button">주간 데이터</button>
-        <button className="btn btn-light" type="button">월간 데이터</button>
-        <button className="btn btn-primary" type="button">조회</button>
+        <input className="date-input" type="date" value={rangeEnd} onChange={(event) => setRangeEnd(event.target.value)} />
+        <button className="btn btn-primary" disabled={!selectedSalesStoreId || salesLoading} onClick={() => setQueryVersion((version) => version + 1)} type="button">조회</button>
       </div>
       <div className="detail-grid">
-        <MetricCard label="총 매출" value={`${formatNumber(displaySales)}원`} tone="red" />
-        <MetricCard label="신규 고객" value={`${formatNumber(displayNewCustomers)}명`} tone="green" />
-        <MetricCard label="재방문율" value={`${displayRevisitRate.toFixed(1)}%`} />
-        <MetricCard label="평균 객단가" value={`${formatNumber(displayAverageTicket)}원`} />
+        <MetricCard label="순매출" value={cardData ? `${formatNumber(cardData.totals.netSales)}원` : "데이터 없음"} tone="red" />
+        <MetricCard label="순결제건수" value={cardData ? `${formatNumber(cardData.totals.netPaymentCount)}건` : "데이터 없음"} tone="green" />
+        <MetricCard label="건당 결제액" value={cardData?.totals.amountPerPayment ? `${formatNumber(cardData.totals.amountPerPayment)}원` : "데이터 없음"} />
+        <MetricCard label="업로드 원본" value={selectedSalesStore ? `${cardData?.imports.length ?? 0}개` : "매장 미선택"} />
       </div>
-      {salesUpload && (
+      {cardData && cardData.imports.length > 0 && (
         <section className="panel">
           <div className="section-headline">
             <div>
-              <h2>업로드 분석 결과</h2>
-              <p className="plain-text">{salesUpload.fileName} · 승인 {salesUpload.transactionCount.toLocaleString("ko-KR")}건 · 재방문 {salesUpload.repeatCustomers.toLocaleString("ko-KR")}건</p>
+              <h2>업로드 이력</h2>
+              <p className="plain-text">동일 파일은 중복 저장하지 않으며, 계산 결과는 업로드 기간 안에서만 표시합니다.</p>
             </div>
           </div>
           <div className="sales-upload-table">
             <div className="analysis-head">
-              <span>날짜</span>
-              <span>매출</span>
-              <span>결제수</span>
+              <span>원본 파일</span>
+              <span>기간 / 순매출</span>
+              <span>순결제건수</span>
             </div>
-            {salesUpload.dateRows.slice(0, 14).map((row) => (
-              <div className="analysis-row" key={row.label}>
-                <strong>{row.label}</strong>
-                <span>{formatNumber(row.amount)}원</span>
-                <span>{formatNumber(row.count)}건</span>
+            {cardData.imports.slice(0, 8).map((row) => (
+              <div className="analysis-row" key={row.id}>
+                <strong>{row.file_name}</strong>
+                <span>{row.period_start}~{row.period_end} · {formatNumber(Number(row.net_sales))}원</span>
+                <span>{formatNumber(Number(row.net_payment_count))}건</span>
               </div>
             ))}
           </div>
@@ -1950,96 +1908,84 @@ function SalesPage() {
             <button type="button">월간</button>
           </div>
         </div>
-        <SalesComboChart />
+        <SalesComboChart rows={cardData?.daily ?? []} />
       </section>
       <section className="panel two-col">
         <div>
           <h2>시간대별 매출</h2>
-          <TimeSalesChart />
+          {cardData?.hourly.length ? (
+            <BarSet labels={cardData.hourly.map((row) => `${row.hour}시`)} values={cardData.hourly.map((row) => row.netSales)} />
+          ) : <p className="plain-text">선택한 기간에 시간대별 데이터가 없습니다.</p>}
         </div>
         <div>
           <h2>요일별 매출</h2>
-          <BarSet labels={["월", "화", "수", "목", "금", "토", "일"]} values={[420, 250, 230, 338, 488, 558, 386]} />
+          {cardData?.weekdays.length ? (
+            <BarSet labels={["월", "화", "수", "목", "금", "토", "일"]} values={cardData.weekdays.map((row) => row.netSales)} tone="green" />
+          ) : <p className="plain-text">선택한 기간에 요일별 데이터가 없습니다.</p>}
         </div>
       </section>
       <section className="panel two-col">
         <div>
           <h2>기간별 매출 통계</h2>
           <div className="stat-pill-grid">
-            <strong>최저 <span>382,500원</span></strong>
-            <strong>평균 <span>886,263원</span></strong>
-            <strong>최고 <span>1,719,500원</span></strong>
+            <strong>최저 <span>{dailyStats.sales ? `${formatNumber(dailyStats.sales.min)}원` : "데이터 없음"}</span></strong>
+            <strong>평균 <span>{dailyStats.sales ? `${formatNumber(dailyStats.sales.avg)}원` : "데이터 없음"}</span></strong>
+            <strong>최고 <span>{dailyStats.sales ? `${formatNumber(dailyStats.sales.max)}원` : "데이터 없음"}</span></strong>
           </div>
         </div>
         <div>
-          <h2>객단가 통계</h2>
+          <h2>건당 결제액 통계</h2>
           <div className="stat-pill-grid green">
-            <strong>최저 <span>40,210원</span></strong>
-            <strong>평균 <span>58,563.66원</span></strong>
-            <strong>최고 <span>82,513.33원</span></strong>
+            <strong>최저 <span>{dailyStats.tickets ? `${formatNumber(dailyStats.tickets.min)}원` : "데이터 없음"}</span></strong>
+            <strong>평균 <span>{dailyStats.tickets ? `${formatNumber(dailyStats.tickets.avg)}원` : "데이터 없음"}</span></strong>
+            <strong>최고 <span>{dailyStats.tickets ? `${formatNumber(dailyStats.tickets.max)}원` : "데이터 없음"}</span></strong>
           </div>
         </div>
       </section>
       <section className="panel goal-planner">
-        <h2>개월 목표 · 광고비 계산</h2>
-        <div className="goal-line-forecast">
-          <div className="goal-chart-caption">
-            <strong>현재 → 6개월 목표 추정</strong>
-            <span>목표 개월수, 목표 매출, 목표 재방문률, 목표 객단가를 입력하면 월별 필요 고객수가 역산되는 영역입니다.</span>
-          </div>
-          <svg viewBox="0 0 1120 280" role="img" aria-label="목표 매출 기반 필요 고객수 추정 그래프">
-            {[0, 1, 2, 3].map((line) => (
-              <line className="goal-grid-line" key={line} x1="48" x2="1072" y1={50 + line * 55} y2={50 + line * 55} />
-            ))}
-            {["현재", "1개월", "2개월", "3개월", "4개월", "5개월", "6개월"].map((label, index) => (
-              <text key={label} x={72 + index * 160} y="246">{label}</text>
-            ))}
-            <path className="goal-line sales" d="M72 180 L232 160 L392 140 L552 120 L712 100 L872 80 L1032 60" />
-            <path className="goal-line new" d="M72 200 L232 185 L392 170 L552 155 L712 140 L872 124 L1032 108" />
-            <path className="goal-line revisit" d="M72 224 L232 219 L392 214 L552 209 L712 204 L872 199 L1032 194" />
-            {[72, 232, 392, 552, 712, 872, 1032].map((x, index) => (
-              <g key={x}>
-                <circle className="goal-point sales" cx={x} cy={180 - index * 20} r="4" />
-                <circle className="goal-point new" cx={x} cy={200 - index * 15.3} r="4" />
-                <circle className="goal-point revisit" cx={x} cy={224 - index * 5} r="4" />
-              </g>
-            ))}
-          </svg>
-          <div className="goal-hover-card">
-            <strong>1개월</strong>
-            <span>매출 41,930,833원</span>
-            <span>신규 629명</span>
-            <span>재방문 55명</span>
-          </div>
-          <div className="goal-legend">
-            <span><i className="pink" /> 목표 매출</span>
-            <span><i className="purple" /> 필요 신규</span>
-            <span><i className="teal" /> 필요 재방문</span>
+        <div className="section-headline">
+          <div>
+            <h2>개월 목표 · 광고비 참고 계산</h2>
+            <p className="plain-text">카드 원장으로 확인 가능한 순매출과 순결제건수만 사용합니다. 신규·재방문 고객은 CRM/POS 식별자가 연결된 뒤 계산합니다.</p>
           </div>
         </div>
         <div className="goal-panels">
           <div className="goal-form-card">
-            <h3>현재 매출 관련 · 전월 합계</h3>
-            <InfoLine label="매출" value="38,317,000원" />
-            <InfoLine label="재방문" value="50명" />
-            <InfoLine label="신규" value="575명" />
-            <InfoLine label="재방문률" value="8%" />
-            <InfoLine label="객단가" value="61,307원" />
+            <h3>현재 선택 기간</h3>
+            <InfoLine label="순매출" value={cardData ? `${formatNumber(goalPlan.currentSales)}원` : "데이터 없음"} />
+            <InfoLine label="순결제건수" value={cardData ? `${formatNumber(goalPlan.currentPayments)}건` : "데이터 없음"} />
+            <InfoLine label="건당 결제액" value={cardData ? `${formatNumber(goalPlan.currentTicket)}원` : "데이터 없음"} />
+            <InfoLine label="신규·재방문" value="CRM/POS 연결 필요" />
           </div>
           <div className="goal-form-card">
             <h3>N개월 뒤 목표</h3>
-            <label className="mock-field"><span>목표까지 개월 수</span><input readOnly value="6" /></label>
-            <label className="mock-field"><span>목표 매출</span><input readOnly value="60,000,000원" /></label>
-            <label className="mock-field"><span>목표 재방문률</span><input readOnly value="8%" /></label>
-            <label className="mock-field"><span>목표 객단가</span><input readOnly value="61,307원" /></label>
-            <InfoLine label="목표 신규" value="900명" />
-            <InfoLine label="목표 재방문" value="78명" />
+            <label className="mock-field"><span>목표까지 개월 수</span><input max="12" min="1" onChange={(event) => setGoalMonths(Number(event.target.value))} type="number" value={goalMonths} /></label>
+            <label className="mock-field"><span>목표 순매출</span><input min="0" onChange={(event) => setTargetSales(Number(event.target.value))} type="number" value={targetSales} /></label>
+            <label className="mock-field"><span>목표 건당 결제액</span><input min="1" onChange={(event) => setTargetTicket(Number(event.target.value))} type="number" value={targetTicket} /></label>
+            <InfoLine label="필요 결제건수" value={`${formatNumber(goalPlan.targetPayments)}건`} />
+            <InfoLine label="월평균 추가 결제" value={`${formatNumber(goalPlan.monthlyAdditionalPayments)}건`} />
           </div>
         </div>
+        <div className="goal-chart-grid" aria-label="월별 목표 매출과 결제건수">
+          {goalPlan.rows.map((row) => (
+            <div className="goal-month-row" key={row.label}>
+              <strong>{row.label}</strong>
+              <div className="goal-bars">
+                <span className="goal-bar pink" style={{ width: `${Math.max(2, targetSales ? (row.sales / Math.max(targetSales, goalPlan.currentSales, 1)) * 100 : 2)}%` }} />
+                <span className="goal-bar teal" style={{ width: `${Math.max(2, goalPlan.targetPayments ? (row.payments / Math.max(goalPlan.targetPayments, goalPlan.currentPayments, 1)) * 100 : 2)}%` }} />
+              </div>
+              <div className="goal-month-values">
+                <span>매출 {formatNumber(row.sales)}원</span>
+                <span>결제 {formatNumber(row.payments)}건</span>
+                <span>{row.label === "현재" ? "기준" : `+${formatNumber(Math.max(0, row.payments - goalPlan.currentPayments))}건`}</span>
+              </div>
+            </div>
+          ))}
+        </div>
         <div className="ad-estimate-card">
-          <label className="mock-field"><span>종합 CAC</span><input defaultValue="2,180원" /></label>
-          <InfoLine label="증분 신규" value="54명/월" />
-          <InfoLine label="광고비" value="117,720원/월" />
+          <label className="mock-field"><span>참고 획득비용(CAC)</span><input min="0" onChange={(event) => setReferenceCac(Number(event.target.value))} type="number" value={referenceCac} /></label>
+          <InfoLine label="월평균 추가 결제" value={`${formatNumber(goalPlan.monthlyAdditionalPayments)}건`} />
+          <InfoLine label="참고 광고비" value={`${formatNumber(goalPlan.estimatedMonthlyBudget)}원/월`} />
         </div>
       </section>
     </>
