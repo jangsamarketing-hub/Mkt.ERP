@@ -1,0 +1,12 @@
+.git
+.next
+.vercel
+node_modules
+.agents
+.codex
+_incoming
+references
+*.log
+*.zip
+tsconfig.tsbuildinfo
+.env.local
