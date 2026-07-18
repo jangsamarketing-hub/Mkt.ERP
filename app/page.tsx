@@ -286,6 +286,53 @@ type PlaceCsvUpload = {
   channelRows: (string | number)[][];
 };
 
+type ErpStoreOption = {
+  id: string;
+  name: string;
+  manager_name: string | null;
+  naver_mid: string | null;
+  contract_period_weeks: number | null;
+};
+
+type ServerPlaceUpload = {
+  id: string;
+  store_id: string;
+  file_name: string;
+  period_start: string;
+  period_end: string;
+  uploaded_at: string;
+  warnings: string[];
+  summary: {
+    placeInflow: number | null;
+    reservationOrder: number | null;
+    smartCall: number | null;
+    reviewRegister: number | null;
+  };
+  keywords: Array<{
+    keyword: string;
+    visit_count: number;
+    previous_count: number | null;
+    diff_count: number | null;
+    diff_rate: number | null;
+  }>;
+  channels: Array<{
+    channel: string;
+    visit_count: number;
+    previous_count: number | null;
+    diff_count: number | null;
+    diff_rate: number | null;
+  }>;
+};
+
+type DashboardPlaceStore = {
+  id: string;
+  name: string;
+  managerName: string | null;
+  weeklyInflow: Array<number | null>;
+  currentInflow: number | null;
+  previousInflow: number | null;
+};
+
 type GoldenKeywordJob = {
   id: string;
   storeId: string;
@@ -1102,10 +1149,51 @@ function Dashboard({
   const [searchTerm, setSearchTerm] = useState("");
   const [sortMode, setSortMode] = useState<DashboardSort>("week");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const [placeDashboardStores, setPlaceDashboardStores] = useState<DashboardPlaceStore[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    fetch(`/api/erp/dashboard?date=${encodeURIComponent(appliedDate)}`)
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("dashboard query failed")))
+      .then((payload: { stores?: DashboardPlaceStore[] }) => {
+        if (active) setPlaceDashboardStores(payload.stores ?? []);
+      })
+      .catch(() => {
+        if (active) setPlaceDashboardStores([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [appliedDate]);
+
+  const dashboardSourceRows = useMemo(() => {
+    if (!placeDashboardStores.length) return rows;
+    const baseRows = new Map(rows.map((store) => [store.name, store]));
+    return placeDashboardStores.map((placeStore) => {
+      const base = baseRows.get(placeStore.name);
+      return {
+        id: placeStore.id,
+        week: base?.week ?? "신규",
+        name: placeStore.name,
+        manager: placeStore.managerName || base?.manager || "미배정",
+        bizMoney: base?.bizMoney ?? null,
+        naverInflow: placeStore.currentInflow,
+        sales: base?.sales ?? null,
+        previous: {
+          bizMoney: base?.previous.bizMoney ?? null,
+          naverInflow: placeStore.previousInflow,
+          sales: base?.previous.sales ?? null,
+        },
+        weeklyInflow: placeStore.weeklyInflow.map((value) => value ?? 0),
+        weeklyTasks: base?.weeklyTasks ?? [0, 0, 0, 0],
+        memo: base?.memo ?? "데이터 연결 대기",
+      } satisfies StoreRow;
+    });
+  }, [placeDashboardStores, rows]);
 
   const dashboardRows = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
-    const filtered = rows.filter((store) => {
+    const filtered = dashboardSourceRows.filter((store) => {
       const matchesSearch = !normalizedSearch || `${store.name} ${store.manager}`.toLowerCase().includes(normalizedSearch);
       return matchesSearch;
     });
@@ -1120,7 +1208,7 @@ function Dashboard({
       if (sortMode === "sales") result = (metricRate(a.sales, a.previous.sales) ?? -999) - (metricRate(b.sales, b.previous.sales) ?? -999);
       return sortDirection === "asc" ? result : -result;
     });
-  }, [rows, searchTerm, sortMode, sortDirection]);
+  }, [dashboardSourceRows, searchTerm, sortMode, sortDirection]);
 
   const toggleSort = (mode: DashboardSort) => {
     if (sortMode === mode) {
@@ -1317,8 +1405,12 @@ function AdPage() {
 function InflowPage() {
   const [selectedInflowStoreId, setSelectedInflowStoreId] = useState("");
   const [inflowMode, setInflowMode] = useState<"range" | "weekly" | "monthly">("range");
-  const [uploadDate, setUploadDate] = useState("2026-06-01");
-  const [placeCsvUploads, setPlaceCsvUploads] = useState<PlaceCsvUpload[]>([]);
+  const [rangeStart, setRangeStart] = useState("2026-06-01");
+  const [rangeEnd, setRangeEnd] = useState("2026-06-30");
+  const [queryVersion, setQueryVersion] = useState(0);
+  const [erpStores, setErpStores] = useState<ErpStoreOption[]>([]);
+  const [placeCsvUploads, setPlaceCsvUploads] = useState<ServerPlaceUpload[]>([]);
+  const [placeDataStatus, setPlaceDataStatus] = useState("");
   const [goldenKeywordJobs, setGoldenKeywordJobs] = useState<GoldenKeywordJob[]>([]);
   const [activeAnalysisRows, setActiveAnalysisRows] = useState<KeywordAnalysisRow[]>([]);
   const [keywordInputs, setKeywordInputs] = useState<Record<number, string>>(() =>
@@ -1337,29 +1429,83 @@ function InflowPage() {
   const tagSet = generatedKeywords.slice(0, 50);
   const powerlinkSet = generatedKeywords.slice(0, 1000);
   const hasSelectedStore = Boolean(selectedInflowStoreId);
-  const selectedInflowStore = stores.find((store) => store.id === selectedInflowStoreId);
-  const selectedUploads = placeCsvUploads.filter((upload) => upload.storeId === selectedInflowStoreId);
-  const latestUpload = [...selectedUploads].sort((a, b) => b.weekStart.localeCompare(a.weekStart))[0];
-  const displayedKeywords = latestUpload?.keywordRows.length ? latestUpload.keywordRows : inflowKeywords;
-  const displayedChannels = latestUpload?.channelRows.length ? latestUpload.channelRows : inflowChannels;
-  const uploadedSummary = latestUpload?.summary ?? {};
-  const analysisRows = activeAnalysisRows.length ? activeAnalysisRows : makeKeywordAnalysisRows(generatedKeywords).slice(0, 20);
+  const selectedInflowStore = erpStores.find((store) => store.id === selectedInflowStoreId);
+  const selectedUploads = placeCsvUploads;
+  const hasPlaceData = selectedUploads.length > 0;
+  const uploadedSummary = useMemo(() => selectedUploads.reduce((summary, upload) => ({
+    placeInflow: summary.placeInflow + (upload.summary.placeInflow ?? 0),
+    reservationOrder: summary.reservationOrder + (upload.summary.reservationOrder ?? 0),
+    smartCall: summary.smartCall + (upload.summary.smartCall ?? 0),
+    reviewRegister: summary.reviewRegister + (upload.summary.reviewRegister ?? 0),
+  }), { placeInflow: 0, reservationOrder: 0, smartCall: 0, reviewRegister: 0 }), [selectedUploads]);
+  const displayedKeywords = useMemo(() => {
+    const totals = new Map<string, { current: number; previous: number }>();
+    selectedUploads.forEach((upload) => upload.keywords.forEach((row) => {
+      const current = totals.get(row.keyword) ?? { current: 0, previous: 0 };
+      current.current += row.visit_count;
+      current.previous += row.previous_count ?? 0;
+      totals.set(row.keyword, current);
+    }));
+    return [...totals.entries()]
+      .map(([keyword, value]) => [keyword, value.current, value.current - value.previous, value.previous ? Number((((value.current - value.previous) / value.previous) * 100).toFixed(1)) : 0] as (string | number)[])
+      .sort((a, b) => Number(b[1]) - Number(a[1]));
+  }, [selectedUploads]);
+  const displayedChannels = useMemo(() => {
+    const totals = new Map<string, { current: number; previous: number }>();
+    selectedUploads.forEach((upload) => upload.channels.forEach((row) => {
+      const current = totals.get(row.channel) ?? { current: 0, previous: 0 };
+      current.current += row.visit_count;
+      current.previous += row.previous_count ?? 0;
+      totals.set(row.channel, current);
+    }));
+    return [...totals.entries()]
+      .map(([channel, value]) => [channel, value.current, value.current - value.previous, value.previous ? Number((((value.current - value.previous) / value.previous) * 100).toFixed(1)) : 0] as (string | number)[])
+      .sort((a, b) => Number(b[1]) - Number(a[1]));
+  }, [selectedUploads]);
+  const analysisRows = activeAnalysisRows;
   const storeGoldenJobs = goldenKeywordJobs.filter((job) => job.storeId === selectedInflowStoreId);
 
   useEffect(() => {
+    fetch("/api/erp/stores")
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("store query failed")))
+      .then((payload: { stores?: ErpStoreOption[] }) => setErpStores(payload.stores ?? []))
+      .catch(() => setPlaceDataStatus("매장 목록을 불러오지 못했습니다."));
+  }, []);
+
+  useEffect(() => {
+    if (!selectedInflowStoreId) {
+      setPlaceCsvUploads([]);
+      setPlaceDataStatus("");
+      return;
+    }
+    let active = true;
+    setPlaceDataStatus("데이터 조회 중");
+    const params = new URLSearchParams({ storeId: selectedInflowStoreId, start: rangeStart, end: rangeEnd });
+    fetch(`/api/erp/place-uploads?${params.toString()}`)
+      .then((response) => response.ok ? response.json() : response.json().then((payload) => Promise.reject(new Error(payload.error ?? "query failed"))))
+      .then((payload: { uploads?: ServerPlaceUpload[] }) => {
+        if (!active) return;
+        setPlaceCsvUploads(payload.uploads ?? []);
+        setPlaceDataStatus(payload.uploads?.length ? `${payload.uploads.length}주 데이터 조회 완료` : "선택한 기간에 데이터가 없습니다.");
+      })
+      .catch((error: Error) => {
+        if (!active) return;
+        setPlaceCsvUploads([]);
+        setPlaceDataStatus(error.message);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedInflowStoreId, rangeStart, rangeEnd, queryVersion]);
+
+  useEffect(() => {
     try {
-      const savedUploads = window.localStorage.getItem("erp-place-csv-uploads");
       const savedJobs = window.localStorage.getItem("erp-golden-keyword-jobs");
-      if (savedUploads) setPlaceCsvUploads(JSON.parse(savedUploads) as PlaceCsvUpload[]);
       if (savedJobs) setGoldenKeywordJobs(JSON.parse(savedJobs) as GoldenKeywordJob[]);
     } catch {
       // 브라우저 임시 저장 실패는 화면 사용을 막지 않는다.
     }
   }, []);
-
-  useEffect(() => {
-    window.localStorage.setItem("erp-place-csv-uploads", JSON.stringify(placeCsvUploads));
-  }, [placeCsvUploads]);
 
   useEffect(() => {
     window.localStorage.setItem("erp-golden-keyword-jobs", JSON.stringify(goldenKeywordJobs));
@@ -1390,22 +1536,38 @@ function InflowPage() {
 
   const uploadPlaceCsv = async (file: File | undefined) => {
     if (!file || !selectedInflowStore) return;
-    const text = await file.text();
-    const parsed = parseLooseCsvRows(text);
-    const { weekStart, weekEnd } = getUploadWeekRange(uploadDate);
-    const upload: PlaceCsvUpload = {
-      id: `${selectedInflowStore.id}-${Date.now()}`,
-      storeId: selectedInflowStore.id,
-      storeName: selectedInflowStore.name,
-      fileName: file.name,
-      uploadedAt: new Date().toISOString(),
-      weekStart,
-      weekEnd,
-      keywordRows: parsed.keywordRows,
-      channelRows: parsed.channelRows,
-      summary: parsed.summary,
-    };
-    setPlaceCsvUploads((uploads) => [upload, ...uploads]);
+    setPlaceDataStatus("CSV 업로드 및 분석 중");
+    const form = new FormData();
+    form.append("storeId", selectedInflowStore.id);
+    form.append("file", file);
+    try {
+      const response = await fetch("/api/erp/place-uploads", { method: "POST", body: form });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "CSV 업로드에 실패했습니다.");
+      setRangeStart((current) => payload.upload?.period_start && payload.upload.period_start < current ? payload.upload.period_start : current);
+      setRangeEnd((current) => payload.upload?.period_end && payload.upload.period_end > current ? payload.upload.period_end : current);
+      setPlaceDataStatus(payload.duplicate ? "이미 업로드된 동일한 주간 CSV입니다." : "CSV 저장 및 분석 완료");
+      setQueryVersion((version) => version + 1);
+    } catch (error) {
+      setPlaceDataStatus(error instanceof Error ? error.message : "CSV 업로드에 실패했습니다.");
+    }
+  };
+
+  const selectWeeklyRange = () => {
+    const { weekStart, weekEnd } = getUploadWeekRange(rangeEnd);
+    setInflowMode("weekly");
+    setRangeStart(weekStart);
+    setRangeEnd(weekEnd);
+  };
+
+  const selectMonthlyRange = () => {
+    const base = /^\d{4}-\d{2}-\d{2}$/.test(rangeEnd) ? new Date(`${rangeEnd}T00:00:00`) : new Date();
+    const start = new Date(base.getFullYear(), base.getMonth(), 1);
+    const end = new Date(base.getFullYear(), base.getMonth() + 1, 0);
+    const format = (value: Date) => `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+    setInflowMode("monthly");
+    setRangeStart(format(start));
+    setRangeEnd(format(end));
   };
 
   const runGoldenKeywordMining = async () => {
@@ -1502,30 +1664,30 @@ function InflowPage() {
       <div className="store-context selectable-context">
         <select value={selectedInflowStoreId} onChange={(event) => setSelectedInflowStoreId(event.target.value)}>
           <option value="">매장을 선택하세요</option>
-          {stores.map((store) => (
+          {erpStores.map((store) => (
             <option key={store.id} value={store.id}>{store.name}</option>
           ))}
         </select>
         {selectedInflowStore ? (
           <>
-            <span>MID 20250761</span>
-            <span>담당자 {selectedInflowStore.manager}</span>
-            <span>관리 {selectedInflowStore.week}</span>
+            <span>MID {selectedInflowStore.naver_mid || "미등록"}</span>
+            <span>담당자 {selectedInflowStore.manager_name || "미배정"}</span>
+            <span>관리 {selectedInflowStore.contract_period_weeks ?? 4}주</span>
           </>
         ) : (
           <span>매장을 선택하면 유입 데이터가 표시됩니다.</span>
         )}
       </div>
       <div className="filter-row toolbar">
-        <input className="date-input" type="date" defaultValue="2026-06-01" />
-        <input className="date-input" type="date" defaultValue="2026-06-30" />
-        <button className={inflowMode === "range" ? "btn btn-primary" : "btn btn-light"} onClick={() => setInflowMode("range")} type="button">
+        <input className="date-input" type="date" value={rangeStart} onChange={(event) => setRangeStart(event.target.value)} />
+        <input className="date-input" type="date" value={rangeEnd} onChange={(event) => setRangeEnd(event.target.value)} />
+        <button className={inflowMode === "range" ? "btn btn-primary" : "btn btn-light"} onClick={() => { setInflowMode("range"); setQueryVersion((version) => version + 1); }} type="button">
           조회
         </button>
-        <button className={inflowMode === "weekly" ? "btn btn-primary" : "btn btn-light"} onClick={() => setInflowMode("weekly")} type="button">
+        <button className={inflowMode === "weekly" ? "btn btn-primary" : "btn btn-light"} onClick={selectWeeklyRange} type="button">
           주간
         </button>
-        <button className={inflowMode === "monthly" ? "btn btn-primary" : "btn btn-light"} onClick={() => setInflowMode("monthly")} type="button">
+        <button className={inflowMode === "monthly" ? "btn btn-primary" : "btn btn-light"} onClick={selectMonthlyRange} type="button">
           월간
         </button>
         <span className="muted-note">CSV 주간 데이터는 월요일~일요일 기준으로 누적 후 조회합니다.</span>
@@ -1533,13 +1695,9 @@ function InflowPage() {
       <section className="panel csv-upload-panel">
         <div>
           <h2>네이버 플레이스 CSV 주간 업로드</h2>
-          <p className="plain-text">매장별로 주간 CSV를 계속 누적합니다. 실제 서버 저장 전까지는 브라우저 임시 저장으로 동작합니다.</p>
+          <p className="plain-text">원본 파일과 분석 결과를 매장·주차별로 서버에 누적합니다. 같은 기간을 다시 올리면 이전 버전도 보존합니다.</p>
         </div>
         <div className="csv-upload-controls">
-          <label>
-            기준 주 날짜
-            <input className="date-input" value={uploadDate} onChange={(event) => setUploadDate(event.target.value)} type="date" />
-          </label>
           <label className={selectedInflowStore ? "file-upload-button" : "file-upload-button disabled"}>
             CSV 업로드
             <input
@@ -1552,19 +1710,20 @@ function InflowPage() {
         </div>
         <div className="upload-history-list">
           {selectedUploads.slice(0, 4).map((upload) => (
-            <span key={upload.id}>{upload.weekStart}~{upload.weekEnd} · {upload.fileName}</span>
+            <span key={upload.id}>{upload.period_start}~{upload.period_end} · {upload.file_name}</span>
           ))}
           {selectedInflowStore && selectedUploads.length === 0 && <span>아직 업로드된 CSV가 없습니다.</span>}
           {!selectedInflowStore && <span>먼저 매장을 선택하세요.</span>}
         </div>
+        {placeDataStatus && <p className="plain-text">{placeDataStatus}</p>}
       </section>
       <div className="detail-grid">
-        <MetricCard label="플레이스 유입" value={hasSelectedStore ? formatNumber(uploadedSummary.placeInflow ?? 2326) : "데이터 없음"} tone={hasSelectedStore ? "red" : undefined} />
-        <MetricCard label="예약·주문 신청" value={hasSelectedStore ? formatNumber(uploadedSummary.reservationOrder ?? 6) : "데이터 없음"} />
-        <MetricCard label="스마트콜 통화" value={hasSelectedStore ? formatNumber(uploadedSummary.smartCall ?? 0) : "데이터 없음"} tone={hasSelectedStore ? "yellow" : undefined} />
-        <MetricCard label="리뷰 등록" value={hasSelectedStore ? formatNumber(uploadedSummary.reviewRegister ?? 29) : "데이터 없음"} />
+        <MetricCard label="플레이스 유입" value={hasPlaceData ? formatNumber(uploadedSummary.placeInflow) : "데이터 없음"} tone={hasPlaceData ? "red" : undefined} />
+        <MetricCard label="예약·주문 신청" value={hasPlaceData ? formatNumber(uploadedSummary.reservationOrder) : "데이터 없음"} />
+        <MetricCard label="스마트콜 통화" value={hasPlaceData ? formatNumber(uploadedSummary.smartCall) : "데이터 없음"} tone={hasPlaceData ? "yellow" : undefined} />
+        <MetricCard label="리뷰 등록" value={hasPlaceData ? formatNumber(uploadedSummary.reviewRegister) : "데이터 없음"} />
       </div>
-      {hasSelectedStore ? (
+      {hasPlaceData ? (
         <>
           <section className="panel two-col">
             <ScrollableMetricList title="유입 키워드" rows={displayedKeywords} />
@@ -1578,7 +1737,7 @@ function InflowPage() {
       ) : (
         <section className="panel empty-data-panel">
           <h2>유입 데이터 없음</h2>
-          <p className="plain-text">먼저 매장을 선택하세요. CSV 업로드 데이터가 없는 기간은 0으로 추정하지 않고 데이터 없음으로 표시합니다.</p>
+          <p className="plain-text">{hasSelectedStore ? "선택한 기간의 주간 CSV를 업로드하세요." : "먼저 매장을 선택하세요."} 업로드하지 않은 기간은 0으로 추정하지 않습니다.</p>
         </section>
       )}
       <section className="panel">
