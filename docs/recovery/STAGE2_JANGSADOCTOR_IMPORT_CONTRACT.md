@@ -30,6 +30,17 @@
 - snapshot hash와 `source_company_id` 기반 중복 방지 기준
 - 실제 DB 변경 없는 preview 결과
 
+## 원격 DB 적용 결과
+
+적용 일시: 2026-07-19 11:35 KST  
+원격 migration: `20260719113559_jangsadoctor_import_control_plane`
+
+- 제어 테이블 7개를 추가했다.
+- 기존 `erp_stores`, 네이버 Place, 여신 상세승인 데이터는 수정하지 않았다.
+- 새 테이블 행 수는 모두 0건이다.
+- 새 테이블 전체에 RLS를 적용했고 `anon`, `authenticated` 직접 조회 권한은 없다.
+- RLS policy 미설정 안내는 서버 service role API만 사용하는 현재 단계의 의도된 상태다. 직원·사장님 계정 도입 시 역할별 policy를 추가한다.
+
 ## 이후 commit 범위
 
 1. `store_external_links`, import run, snapshot, 장사닥터 일별 매출 테이블 migration
