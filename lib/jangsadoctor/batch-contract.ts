@@ -139,7 +139,7 @@ function previewStore(value: unknown, index: number): SalesHistoryStorePreview {
 }
 
 export function isSalesHistoryBatch(value: unknown): value is JsonRecord & { stores: unknown[] } {
-  return isRecord(value) && value.snapshot_type === "all_stores_cardsales_analytics_last_year" && Array.isArray(value.stores);
+  return isRecord(value) && Array.isArray(value.stores);
 }
 
 export function previewSalesHistoryBatch(input: unknown): SalesHistoryBatchPreview {
@@ -151,6 +151,7 @@ export function previewSalesHistoryBatch(input: unknown): SalesHistoryBatchPrevi
   }
 
   if (input.schema_version !== "1.0.0") addIssue(errors, "schema_version", "unsupported_schema", "현재 지원하는 일괄 파일 버전은 1.0.0입니다.");
+  if (input.snapshot_type !== "all_stores_cardsales_analytics_last_year") addIssue(errors, "snapshot_type", "invalid_snapshot_type", "장사 ERP 일괄 과거 매출 파일이 아닙니다.");
 
   const stores = input.stores.map(previewStore);
   const sourceIds = new Set<string>();
