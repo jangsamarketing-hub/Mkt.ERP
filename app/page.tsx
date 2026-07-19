@@ -1108,6 +1108,9 @@ function Dashboard({
                 type="file"
               />
             </label>
+            <a className="btn btn-light" href="/admin/imports/jangsadoctor">
+              과거 매출 이관
+            </a>
             <button className="btn btn-light" onClick={() => setView("store")} type="button">
               <Building2 size={16} />
               업체 추가

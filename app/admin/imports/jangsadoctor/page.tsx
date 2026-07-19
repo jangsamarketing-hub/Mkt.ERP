@@ -1,6 +1,7 @@
 "use client";
 
-import { ChangeEvent, useMemo, useState } from "react";
+import { ChangeEvent, DragEvent, useMemo, useState } from "react";
+import { convertSalesHistoryCsvToBatch } from "@/lib/jangsadoctor/csv-to-batch";
 
 type PreviewIssue = { path: string; code: string; message: string };
 type BatchStore = {
@@ -52,8 +53,9 @@ function formatNumber(value: number | null) {
 export default function SalesHistoryImportPreviewPage() {
   const [payload, setPayload] = useState("");
   const [result, setResult] = useState<PreviewResponse | null>(null);
-  const [message, setMessage] = useState("장사 ERP JSON을 붙여넣거나 파일을 선택하세요. 미리보기는 DB를 변경하지 않습니다.");
+  const [message, setMessage] = useState("장사 ERP JSON 또는 CSV를 붙여넣거나 올리세요. 미리보기는 DB를 변경하지 않습니다.");
   const [loading, setLoading] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
   const parsedLabel = useMemo(() => payload.trim() ? `${payload.length.toLocaleString("ko-KR")}자 입력됨` : "입력 없음", [payload]);
 
   const loadExample = () => {
@@ -62,16 +64,42 @@ export default function SalesHistoryImportPreviewPage() {
     setMessage("비식별 예시 JSON을 불러왔습니다. 미리보기 검사를 누르면 됩니다.");
   };
 
+  const loadImportFile = async (file: File) => {
+    const fileName = file.name.toLowerCase();
+    const text = await file.text();
+    if (fileName.endsWith(".csv")) {
+      const converted = convertSalesHistoryCsvToBatch(text);
+      setPayload(JSON.stringify(converted.payload, null, 2));
+      setResult(null);
+      setMessage(`${file.name}을 ${converted.dailyRowCount.toLocaleString("ko-KR")}개 일별 매출 행으로 변환했습니다. 제외 ${converted.skippedRowCount}행 · 오류 제외 ${converted.errorRowCount}행. 이제 미리보기 검사를 누르세요.`);
+      return;
+    }
+    if (!fileName.endsWith(".json")) throw new Error("장사 ERP 과거 매출 JSON 또는 CSV 파일만 올릴 수 있습니다.");
+    setPayload(text);
+    setResult(null);
+    setMessage(`${file.name}을 불러왔습니다. 아직 DB에는 저장되지 않았습니다.`);
+  };
+
   const loadFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    if (!file.name.toLowerCase().endsWith(".json")) {
-      setMessage("현재는 장사 ERP JSON 기준 파일을 선택해 주세요. CSV는 대조용으로 보관하며 다음 단계에서 함께 지원합니다.");
-      return;
+    try {
+      await loadImportFile(file);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "파일을 읽지 못했습니다.");
     }
-    setPayload(await file.text());
-    setResult(null);
-    setMessage(`${file.name}을 불러왔습니다. 아직 DB에는 저장되지 않았습니다.`);
+  };
+
+  const handleDrop = async (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setDragActive(false);
+    const file = event.dataTransfer.files?.[0];
+    if (!file) return;
+    try {
+      await loadImportFile(file);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "파일을 읽지 못했습니다.");
+    }
   };
 
   const preview = async () => {
@@ -123,13 +151,17 @@ export default function SalesHistoryImportPreviewPage() {
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg font-bold">1. JSON 불러오기</h2>
+              <h2 className="text-lg font-bold">1. 과거 매출 파일 불러오기</h2>
               <p className="mt-1 text-sm text-slate-500">{parsedLabel}</p>
             </div>
             <div className="flex flex-wrap gap-2">
               <button className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold hover:bg-slate-50" onClick={loadExample} type="button">비식별 예시 불러오기</button>
-              <label className="cursor-pointer rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold hover:bg-slate-50">JSON 파일 선택<input accept="application/json,.json" className="hidden" onChange={loadFile} type="file" /></label>
+              <label className="cursor-pointer rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold hover:bg-slate-50">JSON · CSV 파일 선택<input accept="application/json,.json,text/csv,.csv" className="hidden" onChange={loadFile} type="file" /></label>
             </div>
+          </div>
+          <div className={`mt-4 rounded-xl border-2 border-dashed p-6 text-center transition ${dragActive ? "border-blue-500 bg-blue-50" : "border-slate-300 bg-slate-50"}`} onDragEnter={(event) => { event.preventDefault(); setDragActive(true); }} onDragLeave={(event) => { event.preventDefault(); setDragActive(false); }} onDragOver={(event) => event.preventDefault()} onDrop={handleDrop}>
+            <p className="font-semibold">JSON 또는 CSV 파일을 여기에 끌어다 놓으세요</p>
+            <p className="mt-1 text-sm text-slate-500">기존 장사 ERP 과거 일매출 파일만 검사합니다. XLS/XLSX 여신금융 파일은 기존 여신금융 매출 탭에서 올리세요.</p>
           </div>
           <textarea className="mt-4 min-h-80 w-full rounded-xl border border-slate-300 bg-slate-950 p-4 font-mono text-xs leading-5 text-slate-100 outline-none ring-sky-500 focus:ring-2" onChange={(event) => setPayload(event.target.value)} placeholder='{"schema_version":"1.0.0", ...}' value={payload} />
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
