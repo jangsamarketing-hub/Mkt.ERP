@@ -84,7 +84,16 @@ Stage 0 원격 감사에서 기존 ERP 연관 테이블의 고아 `store_id`는 
 3. 새 구조는 기존 컬럼을 삭제하거나 기존 `id`를 변경하지 않으므로, 애플리케이션 롤백 후에도 기존 Place/여신 기능은 유지된다.
 4. DB 구조 제거가 꼭 필요할 때만 대표 승인 후 `supabase/rollbacks/202607190005_canonical_store_registry.down.sql`을 검토 실행한다.
 
-## 8. 대표 승인 전 남은 Gate
+## 8. 2026-07-19 원격 사전점검 결과
+
+- ERP Supabase `iutsvjtrklasrmjukkie`의 migration 이력은 기존 core, Place 주간 적재, 여신금융 원장까지 5개이며, Stage 1C의 005~007은 아직 적용되지 않았다.
+- 실제 `erp_stores`는 6개 행이며 기존 `id`, `contract_start_date`, `naver_mid`, `updated_at` 컬럼이 migration 전제와 일치한다.
+- 신규 원장 테이블(`organizations`, `profiles`, `organization_members`, `store_members`, `store_external_identifiers`)은 아직 없어 이름 충돌이 없다.
+- Place 업로드·행 테이블, 여신금융 import·transaction, 키워드 테이블의 고아 `store_id`는 모두 0건이다.
+- `erp_stores`에 사용자 trigger가 없어 Stage 1C의 `updated_at` trigger 추가와 충돌하지 않는다.
+- 보안 advisor에는 기존 테이블의 RLS policy 부재와 기존 카드 집계 view 2건의 SECURITY DEFINER 경고가 남아 있다. 이번 migration은 새 테이블에 RLS를 켜고 브라우저 역할의 직접 권한을 회수하므로 해당 기존 경고를 확대하지 않는다. 기존 view 정리는 별도 보안 정비 작업으로 분리한다.
+
+## 9. 대표 승인 전 남은 Gate
 
 1. schema dump를 확보한 임시 DB에서 005 → 006 → 검증 → 007 순서 리허설
 2. 실제 6개 매장의 `production/sample/test` 분류 확정
