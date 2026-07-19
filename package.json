@@ -6,7 +6,12 @@
     "dev": "next dev --webpack",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "eslint app components lib",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test",
+    "test:parsers": "node --test \"tests/parsers/*.test.mjs\"",
+    "verify:samples": "node scripts/verify-samples.mjs",
+    "check:secrets": "node scripts/check-secrets.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.7",
@@ -26,6 +31,8 @@
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.2.10",
     "tailwindcss": "latest",
     "typescript": "^5.9.3"
   }

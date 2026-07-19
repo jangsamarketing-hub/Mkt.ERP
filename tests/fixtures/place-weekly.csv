@@ -1,0 +1,55 @@
+[매장 정보]
+storeName,회귀검증 테스트매장
+version,1.0.0
+[기간 정보]
+startDate,2026-07-13
+endDate,2026-07-19
+granularity,weekly
+[1. 리포트 요약 지표]
+metricKey,label,current,previous,diff,rate,source
+placeInflow,플레이스 유입,1000,900,100,11.1,fixture
+reservationOrder,예약·주문,120,100,20,20,fixture
+smartCall,스마트콜,50,45,5,11.1,fixture
+reviewRegister,리뷰 등록,30,25,5,20,fixture
+[2. 유입 키워드]
+keyword,pv,purposeClass
+"테스트매장, 점심",300,목적형
+테스트매장 회식,200,목적형
+[3. 유입 채널]
+channel,pv
+네이버 통합검색,600
+네이버 지도,400
+[4. 시간별 유입]
+hour,pv
+12시,400
+18시,600
+[5. 요일별 유입]
+day,pv
+월,120
+화,130
+수,140
+목,150
+금,180
+토,160
+일,120
+[11-1. 키워드 증감]
+keyword,previous,diff,rate
+"테스트매장, 점심",250,50,20
+테스트매장 회식,180,20,11.1
+[11-2. 채널 증감]
+channel,previous,diff,rate
+네이버 통합검색,550,50,9.1
+네이버 지도,350,50,14.3
+[11-3. 시간대 증감]
+hour,previous,diff,rate
+12시,350,50,14.3
+18시,550,50,9.1
+[11-4. 요일 증감]
+day,previous,diff,rate
+월,100,20,20
+화,120,10,8.3
+수,130,10,7.7
+목,140,10,7.1
+금,160,20,12.5
+토,150,10,6.7
+일,100,20,20

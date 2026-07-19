@@ -1,0 +1,66 @@
+{
+  "schema_version": "2.0.0",
+  "source": "naver_smartplace",
+  "export_profile": "erp",
+  "source_session_id": "sanitized-session",
+  "collector": {
+    "name": "sanitized collector",
+    "version": "1.4.1",
+    "exported_at": "2026-07-18T21:51:54.006Z"
+  },
+  "store": {
+    "business_key": "sanitized-business",
+    "business_ids": {},
+    "store_name": "회귀검증 테스트매장",
+    "store_key": "sanitized-store"
+  },
+  "period": {
+    "start_date": "2026-06-01",
+    "end_date": "2026-06-30",
+    "period_type": "month",
+    "day_count": 30
+  },
+  "analysis_config": {},
+  "modules": {
+    "report": {},
+    "place": {
+      "keywords": [],
+      "channels": [],
+      "hourly": [],
+      "dayOfWeek": [],
+      "demographics": {}
+    },
+    "sales": {},
+    "smart_call": {
+      "summary": {},
+      "collection": {
+        "mode": "report-only",
+        "detailEnabled": false
+      }
+    },
+    "reservation": {},
+    "reviews": {},
+    "ai_review": {}
+  },
+  "coverage": {
+    "report": { "status": "complete" },
+    "place": { "status": "complete" },
+    "sales": { "status": "complete" },
+    "smartCall": {
+      "status": "summary_only",
+      "warning": "리포트의 스마트콜 총 통화만 사용합니다."
+    },
+    "reservation": { "status": "complete" },
+    "reviews": { "status": "complete" },
+    "aiReview": { "status": "complete" }
+  },
+  "quality": {
+    "score": 100,
+    "analysisReady": true,
+    "readyModules": ["report", "place", "sales", "reservation", "reviews", "aiReview"],
+    "blockedModules": ["smartCallDetail"],
+    "issues": []
+  },
+  "provenance": {},
+  "usage_notice": "sanitized regression fixture"
+}

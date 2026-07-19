@@ -2477,7 +2477,7 @@ export default function HomePage() {
     const sheetRows = XLSX.utils.sheet_to_json<unknown[]>(firstSheet, { header: 1, defval: "" });
     const names = Array.from(new Set(extractStoreNamesFromSheet(sheetRows).filter((name) => !isTestStoreName(name))));
 
-    let result: BulkStoreImportResult = { imported: 0, skipped: 0 };
+    const result: BulkStoreImportResult = { imported: 0, skipped: 0 };
     setStoreRows((currentRows) => {
       const cleanedRows = sanitizeStoreRows(currentRows);
       const existingNames = new Set(cleanedRows.map((row) => row.name));
