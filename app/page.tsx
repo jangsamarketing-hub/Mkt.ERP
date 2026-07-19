@@ -5,6 +5,8 @@ import * as XLSX from "xlsx";
 import { DailyTasksPage } from "@/components/daily-tasks/daily-tasks-page";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { StoreInfoPage } from "@/components/stores/store-info-page";
+import { StoreRegistryProvider, useStoreRegistry } from "@/components/stores/store-registry-context";
+import { CanonicalStore } from "@/lib/stores/registry";
 import {
   BarChart3,
   Building2,
@@ -48,6 +50,7 @@ type StoreRow = {
 type BulkStoreImportResult = {
   imported: number;
   skipped: number;
+  failed: number;
 };
 
 type TaskItem = {
@@ -285,14 +288,6 @@ type PlaceCsvUpload = {
   summary: Record<string, number>;
   keywordRows: (string | number)[][];
   channelRows: (string | number)[][];
-};
-
-type ErpStoreOption = {
-  id: string;
-  name: string;
-  manager_name: string | null;
-  naver_mid: string | null;
-  contract_period_weeks: number | null;
 };
 
 type ServerPlaceUpload = {
@@ -735,12 +730,16 @@ function SalesComboChart({ rows }: { rows: ServerCardData["daily"] }) {
 }
 
 function StoreContextBar() {
+  const { stores, selectedStoreId, selectedStore, selectStore, loading } = useStoreRegistry();
   return (
     <div className="store-context">
-      <strong>토종곱창 철산본점</strong>
-      <span>MID 20250761</span>
-      <span>담당자 박상일(경기)</span>
-      <span>관리 4주차</span>
+      <select disabled={loading || !stores.length} value={selectedStoreId} onChange={(event) => selectStore(event.target.value)}>
+        {stores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}
+      </select>
+      <strong>{selectedStore?.name ?? (loading ? "매장 조회 중" : "등록 매장 없음")}</strong>
+      <span>MID {selectedStore?.naverMid ?? "미등록"}</span>
+      <span>담당자 {selectedStore?.managerName ?? "미배정"}</span>
+      <span>관리 {selectedStore?.contractPeriodWeeks ?? 4}주</span>
     </div>
   );
 }
@@ -1008,6 +1007,7 @@ function Dashboard({
   onImportStores?: (file: File | undefined) => void;
   importStatus?: string;
 }) {
+  const { selectStore } = useStoreRegistry();
   const [selectedDate, setSelectedDate] = useState("2026-07-12");
   const [appliedDate, setAppliedDate] = useState("2026-07-12");
   const [searchTerm, setSearchTerm] = useState("");
@@ -1081,6 +1081,11 @@ function Dashboard({
     }
     setSortMode(mode);
     setSortDirection("asc");
+  };
+
+  const openStoreView = (storeId: string, view: ViewId) => {
+    selectStore(storeId);
+    setView(view);
   };
 
   const sortArrow = (mode: DashboardSort) => (
@@ -1166,7 +1171,7 @@ function Dashboard({
                   <span className={getWeekClass(store.week)}>{store.week}</span>
                 </td>
                 <td>
-                  <button className="text-link" onClick={() => setView("store")} type="button">
+                  <button className="text-link" onClick={() => openStoreView(store.id, "store")} type="button">
                     {store.name}
                   </button>
                 </td>
@@ -1177,7 +1182,7 @@ function Dashboard({
                     previous={store.previous.bizMoney}
                     suffix="원"
                     value={store.bizMoney}
-                    onClick={() => setView("ad")}
+                    onClick={() => openStoreView(store.id, "ad")}
                   />
                 </td>
                 <td>
@@ -1186,7 +1191,7 @@ function Dashboard({
                       label="유입"
                       previous={store.previous.naverInflow}
                       value={store.naverInflow}
-                      onClick={() => setView("inflow")}
+                      onClick={() => openStoreView(store.id, "inflow")}
                     />
                     <MiniBars values={store.weeklyInflow} />
                   </div>
@@ -1197,24 +1202,24 @@ function Dashboard({
                     previous={store.previous.sales}
                     suffix="원"
                     value={store.sales}
-                    onClick={() => setView("sales")}
+                    onClick={() => openStoreView(store.id, "sales")}
                   />
                 </td>
                 <td>
-                  <TaskWeeks values={store.weeklyTasks} onClick={() => setView("tasks")} />
+                  <TaskWeeks values={store.weeklyTasks} onClick={() => openStoreView(store.id, "tasks")} />
                 </td>
                 <td>
                   <div className="link-stack">
-                    <button className="mini-link" onClick={() => setView("owner")} type="button">
+                    <button className="mini-link" onClick={() => openStoreView(store.id, "owner")} type="button">
                       사장님 보고서
                     </button>
-                    <button className="mini-link" onClick={() => setView("store")} type="button">
+                    <button className="mini-link" onClick={() => openStoreView(store.id, "store")} type="button">
                       매장 정보
                     </button>
-                    <button className="mini-link" onClick={() => setView("questionnaire")} type="button">
+                    <button className="mini-link" onClick={() => openStoreView(store.id, "questionnaire")} type="button">
                       정보안내문
                     </button>
-                    <button className="mini-link strong-link" onClick={() => setView("weeklyFlow")} type="button">
+                    <button className="mini-link strong-link" onClick={() => openStoreView(store.id, "weeklyFlow")} type="button">
                       주간 흐름
                     </button>
                   </div>
@@ -1267,12 +1272,16 @@ function AdPage() {
 }
 
 function InflowPage() {
-  const [selectedInflowStoreId, setSelectedInflowStoreId] = useState("");
+  const {
+    stores: erpStores,
+    selectedStoreId: selectedInflowStoreId,
+    selectedStore: selectedInflowStore,
+    selectStore: setSelectedInflowStoreId,
+  } = useStoreRegistry();
   const [inflowMode, setInflowMode] = useState<"range" | "weekly" | "monthly">("range");
   const [rangeStart, setRangeStart] = useState("2026-06-01");
   const [rangeEnd, setRangeEnd] = useState("2026-06-30");
   const [queryVersion, setQueryVersion] = useState(0);
-  const [erpStores, setErpStores] = useState<ErpStoreOption[]>([]);
   const [placeCsvUploads, setPlaceCsvUploads] = useState<ServerPlaceUpload[]>([]);
   const [placeDataStatus, setPlaceDataStatus] = useState("");
   const [goldenKeywordJobs, setGoldenKeywordJobs] = useState<GoldenKeywordJob[]>([]);
@@ -1293,7 +1302,6 @@ function InflowPage() {
   const tagSet = generatedKeywords.slice(0, 50);
   const powerlinkSet = generatedKeywords.slice(0, 1000);
   const hasSelectedStore = Boolean(selectedInflowStoreId);
-  const selectedInflowStore = erpStores.find((store) => store.id === selectedInflowStoreId);
   const selectedUploads = placeCsvUploads;
   const hasPlaceData = selectedUploads.length > 0;
   const uploadedSummary = useMemo(() => selectedUploads.reduce((summary, upload) => ({
@@ -1328,13 +1336,6 @@ function InflowPage() {
   }, [selectedUploads]);
   const analysisRows = activeAnalysisRows;
   const storeGoldenJobs = goldenKeywordJobs.filter((job) => job.storeId === selectedInflowStoreId);
-
-  useEffect(() => {
-    fetch("/api/erp/stores")
-      .then((response) => response.ok ? response.json() : Promise.reject(new Error("store query failed")))
-      .then((payload: { stores?: ErpStoreOption[] }) => setErpStores(payload.stores ?? []))
-      .catch(() => setPlaceDataStatus("매장 목록을 불러오지 못했습니다."));
-  }, []);
 
   useEffect(() => {
     if (!selectedInflowStoreId) {
@@ -1534,9 +1535,9 @@ function InflowPage() {
         </select>
         {selectedInflowStore ? (
           <>
-            <span>MID {selectedInflowStore.naver_mid || "미등록"}</span>
-            <span>담당자 {selectedInflowStore.manager_name || "미배정"}</span>
-            <span>관리 {selectedInflowStore.contract_period_weeks ?? 4}주</span>
+            <span>MID {selectedInflowStore.naverMid || "미등록"}</span>
+            <span>담당자 {selectedInflowStore.managerName || "미배정"}</span>
+            <span>관리 {selectedInflowStore.contractPeriodWeeks ?? 4}주</span>
           </>
         ) : (
           <span>매장을 선택하면 유입 데이터가 표시됩니다.</span>
@@ -1728,8 +1729,12 @@ function InflowPage() {
 function SalesPage() {
   const now = new Date();
   const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  const [erpStores, setErpStores] = useState<ErpStoreOption[]>([]);
-  const [selectedSalesStoreId, setSelectedSalesStoreId] = useState("");
+  const {
+    stores: erpStores,
+    selectedStoreId: selectedSalesStoreId,
+    selectedStore: selectedSalesStore,
+    selectStore: setSelectedSalesStoreId,
+  } = useStoreRegistry();
   const [rangeStart, setRangeStart] = useState(`${defaultMonth}-01`);
   const [rangeEnd, setRangeEnd] = useState(new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10));
   const [cardData, setCardData] = useState<ServerCardData | null>(null);
@@ -1740,15 +1745,6 @@ function SalesPage() {
   const [targetSales, setTargetSales] = useState(60000000);
   const [targetTicket, setTargetTicket] = useState(90000);
   const [referenceCac, setReferenceCac] = useState(2180);
-  const selectedSalesStore = erpStores.find((store) => store.id === selectedSalesStoreId);
-
-  useEffect(() => {
-    fetch("/api/erp/stores")
-      .then((response) => response.ok ? response.json() : Promise.reject(new Error("store query failed")))
-      .then((payload: { stores?: ErpStoreOption[] }) => setErpStores(payload.stores ?? []))
-      .catch(() => setSalesUploadMessage("매장 목록을 불러오지 못했습니다."));
-  }, []);
-
   useEffect(() => {
     if (!selectedSalesStoreId) {
       setCardData(null);
@@ -1854,9 +1850,9 @@ function SalesPage() {
         </select>
         {selectedSalesStore ? (
           <>
-            <span>MID {selectedSalesStore.naver_mid || "미등록"}</span>
-            <span>담당자 {selectedSalesStore.manager_name || "미배정"}</span>
-            <span>관리 {selectedSalesStore.contract_period_weeks ?? 4}주</span>
+            <span>MID {selectedSalesStore.naverMid || "미등록"}</span>
+            <span>담당자 {selectedSalesStore.managerName || "미배정"}</span>
+            <span>관리 {selectedSalesStore.contractPeriodWeeks ?? 4}주</span>
           </>
         ) : <span>매장을 선택하면 매출 데이터가 표시됩니다.</span>}
       </div>
@@ -2192,6 +2188,7 @@ function WeeklyFlowPage({ setView }: { setView: (view: ViewId) => void }) {
 }
 
 function QuestionnairePage() {
+  const { stores: questionnaireStores, selectedStoreId, selectedStore, selectStore } = useStoreRegistry();
   const defaultQuestionnaireSections: QuestionnaireSection[] = [
     ["1. 기본정보", ["업체명", "대표자명", "대표님 연락처", "매장 주소", "매장 연락처", "운영시간", "브레이크 타임", "휴무일"]],
     ["2. 네이버/플레이스 계정", ["네이버 아이디", "네이버 비밀번호", "플레이스 URL", "플레이스 MID", "검색광고 계정 여부"]],
@@ -2204,10 +2201,8 @@ function QuestionnairePage() {
     ["9. 추가 요청", ["사장님 요청사항", "주의해야 할 표현", "기타 메모"]],
   ];
   const [questionnaireSections, setQuestionnaireSections] = useState(defaultQuestionnaireSections);
-  const [selectedStoreId, setSelectedStoreId] = useState(stores[0].id);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [templateEditing, setTemplateEditing] = useState(false);
-  const selectedStore = stores.find((store) => store.id === selectedStoreId) ?? stores[0];
 
   const getSectionStatus = (fields: readonly string[]) => {
     const completed = fields.filter((field) => answers[field]?.trim()).length;
@@ -2267,14 +2262,14 @@ function QuestionnairePage() {
         }
       />
       <section className="store-summary-strip">
-        <select value={selectedStoreId} onChange={(event) => setSelectedStoreId(event.target.value)}>
-          {stores.map((store) => (
+        <select value={selectedStoreId} onChange={(event) => selectStore(event.target.value)}>
+          {questionnaireStores.map((store) => (
             <option key={store.id} value={store.id}>{store.name}</option>
           ))}
         </select>
-        <strong>{selectedStore.name}</strong>
-        <span>담당자 {selectedStore.manager}</span>
-        <span>{selectedStore.week}</span>
+        <strong>{selectedStore?.name ?? "등록 매장 없음"}</strong>
+        <span>담당자 {selectedStore?.managerName ?? "미배정"}</span>
+        <span>관리 {selectedStore?.contractPeriodWeeks ?? 4}주</span>
       </section>
       <section className="questionnaire-shell">
         <div className="questionnaire-title">
@@ -2406,23 +2401,22 @@ function isTestStoreName(name: string) {
   return /asdf/i.test(compact) || /^\d{6,}$/.test(compact) || /^[ㄱ-ㅎㅏ-ㅣ]+$/.test(compact);
 }
 
-function sanitizeStoreRows(rows: StoreRow[]) {
-  return rows.filter((row) => row.name.trim() && !isTestStoreName(row.name));
-}
-
-function makeImportedStoreRow(name: string, index: number): StoreRow {
+function canonicalStoreToRow(store: CanonicalStore): StoreRow {
+  const startDate = store.managementStartDate ? new Date(`${store.managementStartDate}T00:00:00`) : null;
+  const elapsedDays = startDate ? Math.max(0, Math.floor((Date.now() - startDate.getTime()) / 86400000)) : null;
+  const week = elapsedDays === null ? "신규" : `${Math.min(4, Math.floor(elapsedDays / 7) + 1)}주차` as StoreRow["week"];
   return {
-    id: `store-${name}-${Date.now()}-${index}`,
-    week: "신규",
-    name,
-    manager: "미배정",
+    id: store.id,
+    week,
+    name: store.name,
+    manager: store.managerName ?? "미배정",
     bizMoney: null,
     naverInflow: null,
     sales: null,
     previous: { bizMoney: null, naverInflow: null, sales: null },
     weeklyInflow: [0, 0, 0, 0],
     weeklyTasks: [0, 0, 0, 0],
-    memo: "",
+    memo: store.memo ?? "",
   };
 }
 
@@ -2447,28 +2441,17 @@ function extractStoreNamesFromSheet(rows: unknown[][]) {
     .filter((value) => value.length >= 2 && !headerCandidates.includes(value));
 }
 
-export default function HomePage() {
+function HomePageContent() {
+  const { stores: registryStores, refreshStores, selectStore, error: storeRegistryError } = useStoreRegistry();
   const [activeView, setActiveView] = useState<ViewId>("dashboard");
   const [previousView, setPreviousView] = useState<ViewId>("dashboard");
-  const [storeRows, setStoreRows] = useState<StoreRow[]>(stores);
   const [storeImportStatus, setStoreImportStatus] = useState("");
+  const storeRows = useMemo(() => registryStores.map(canonicalStoreToRow), [registryStores]);
   const navigateTo = (view: ViewId) => {
     setPreviousView(activeView);
     setActiveView(view);
   };
   const goBack = () => setActiveView(previousView);
-
-  useEffect(() => {
-    const savedRows = window.localStorage.getItem("erp:store-rows");
-    if (!savedRows) return;
-    try {
-      const parsedRows = sanitizeStoreRows(JSON.parse(savedRows) as StoreRow[]);
-      setStoreRows(parsedRows);
-      window.localStorage.setItem("erp:store-rows", JSON.stringify(parsedRows));
-    } catch {
-      window.localStorage.removeItem("erp:store-rows");
-    }
-  }, []);
 
   const importStoresFromExcel = async (file: File | undefined): Promise<BulkStoreImportResult | null> => {
     if (!file) return null;
@@ -2478,50 +2461,89 @@ export default function HomePage() {
     const sheetRows = XLSX.utils.sheet_to_json<unknown[]>(firstSheet, { header: 1, defval: "" });
     const names = Array.from(new Set(extractStoreNamesFromSheet(sheetRows).filter((name) => !isTestStoreName(name))));
 
-    const result: BulkStoreImportResult = { imported: 0, skipped: 0 };
-    setStoreRows((currentRows) => {
-      const cleanedRows = sanitizeStoreRows(currentRows);
-      const existingNames = new Set(cleanedRows.map((row) => row.name));
-      const importedRows = names
-        .filter((name, index) => {
-          const exists = existingNames.has(name);
-          if (exists) result.skipped += 1;
-          if (!exists) result.imported += 1;
-          return !exists;
-        })
-        .map(makeImportedStoreRow);
-      const nextRows = [...cleanedRows, ...importedRows];
-      window.localStorage.setItem("erp:store-rows", JSON.stringify(nextRows));
-      return nextRows;
-    });
-    setStoreImportStatus(`${result.imported}개 업체 추가, ${result.skipped}개 중복 제외`);
+    const result: BulkStoreImportResult = { imported: 0, skipped: 0, failed: 0 };
+    const existingNames = new Set(registryStores.map((store) => store.name));
+    for (const name of names) {
+      if (existingNames.has(name)) {
+        result.skipped += 1;
+        continue;
+      }
+      const response = await fetch("/api/erp/stores", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, contractPeriodWeeks: 4, lifecycleStatus: "active", environment: "production" }),
+      });
+      if (response.ok) {
+        result.imported += 1;
+        existingNames.add(name);
+      } else {
+        result.failed += 1;
+      }
+    }
+    await refreshStores();
+    setStoreImportStatus(`${result.imported}개 업체 추가, ${result.skipped}개 중복 제외, ${result.failed}개 실패`);
     return result;
   };
 
-  const saveStoreRow = (profile: { storeName: string; manager: string; contractPeriod: string; memo: string }) => {
-    const normalizedName = profile.storeName.trim() || "신규 매장";
-    setStoreRows((currentRows) => {
-      const nextRow: StoreRow = {
-        id: `store-${normalizedName}`,
-        week: profile.contractPeriod === "4주" ? "1주차" : "신규",
-        name: normalizedName,
-        manager: profile.manager || "미배정",
-        bizMoney: null,
-        naverInflow: null,
-        sales: null,
-        previous: { bizMoney: null, naverInflow: null, sales: null },
-        weeklyInflow: [0, 0, 0, 0],
-        weeklyTasks: [0, 0, 0, 0],
+  const saveStoreRow = async (
+    storeId: string | null,
+    profile: {
+      clientName: string;
+      storeName: string;
+      industry: string;
+      region: string;
+      manager: string;
+      startDate: string;
+      contractPeriod: string;
+      placeUrl: string;
+      placeMid: string;
+      memo: string;
+    },
+  ) => {
+    const response = await fetch(storeId ? `/api/erp/stores/${encodeURIComponent(storeId)}` : "/api/erp/stores", {
+      method: storeId ? "PATCH" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: profile.storeName,
+        clientName: profile.clientName,
+        managerName: profile.manager,
+        category: profile.industry,
+        region: profile.region,
+        contractStartDate: profile.startDate || null,
+        managementStartDate: profile.startDate || null,
+        contractPeriodWeeks: Number.parseInt(profile.contractPeriod, 10) || 4,
+        naverMid: profile.placeMid,
+        naverPlaceUrl: profile.placeUrl,
         memo: profile.memo,
-      };
-      const exists = currentRows.some((row) => row.name === normalizedName);
-      const nextRows = exists ? currentRows.map((row) => (row.name === normalizedName ? { ...row, ...nextRow, id: row.id } : row)) : [...currentRows, nextRow];
-      window.localStorage.setItem("erp:store-rows", JSON.stringify(nextRows));
-      return nextRows;
+      }),
     });
+    if (!response.ok) {
+      const payload = await response.json() as { error?: string };
+      setStoreImportStatus(payload.error ?? "매장 저장 실패");
+      return;
+    }
+    const payload = await response.json() as { store?: { id?: string } };
+    await refreshStores();
+    if (!storeId && payload.store?.id) selectStore(payload.store.id);
+    setStoreImportStatus("매장 원장 저장 완료");
   };
 
-  const content = useMemo(() => {
+  const archiveStoreRow = async (storeId: string) => {
+    const response = await fetch(`/api/erp/stores/${encodeURIComponent(storeId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lifecycleStatus: "archived" }),
+    });
+    if (!response.ok) {
+      const payload = await response.json() as { error?: string };
+      setStoreImportStatus(payload.error ?? "매장 보관 실패");
+      return;
+    }
+    await refreshStores();
+    setStoreImportStatus("매장을 보관 처리했습니다. 데이터는 삭제되지 않았습니다.");
+  };
+
+  const content = (() => {
     switch (activeView) {
       case "ad":
         return <AdPage />;
@@ -2538,7 +2560,7 @@ export default function HomePage() {
       case "owner":
         return <OwnerReportPage />;
       case "store":
-        return <StoreInfoPage stores={storeRows} weeklyTasks={weeklyTasks} onBack={goBack} setView={navigateTo} onSaveStore={saveStoreRow} />;
+        return <StoreInfoPage stores={storeRows} weeklyTasks={weeklyTasks} onBack={goBack} setView={navigateTo} onSaveStore={saveStoreRow} onArchiveStore={archiveStoreRow} />;
       case "questionnaire":
         return <QuestionnairePage />;
       case "weeklyFlow":
@@ -2546,16 +2568,25 @@ export default function HomePage() {
       default:
         return <Dashboard setView={navigateTo} rows={storeRows} onImportStores={importStoresFromExcel} importStatus={storeImportStatus} />;
     }
-  }, [activeView, previousView, storeRows, storeImportStatus]);
+  })();
 
   return (
     <div className="erp-shell">
       <Sidebar activeView={activeView} setView={navigateTo} />
       <main className="main">
         <LogoutButton />
+        {storeRegistryError && <p className="registry-error">매장 원장 연결 오류: {storeRegistryError}</p>}
         {content}
       </main>
     </div>
+  );
+}
+
+export default function HomePage() {
+  return (
+    <StoreRegistryProvider>
+      <HomePageContent />
+    </StoreRegistryProvider>
   );
 }
 

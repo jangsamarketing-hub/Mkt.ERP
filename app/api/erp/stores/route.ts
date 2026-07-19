@@ -1,19 +1,23 @@
 import { NextResponse } from "next/server";
 import { authenticateRequest, authFailureResponse } from "@/lib/auth/request";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { buildStoreInsert, StoreRecord, StoreValidationError } from "@/lib/stores/registry";
 
 export async function GET(request: Request) {
   const auth = authenticateRequest(request, { roles: ["admin"] });
   if (!auth.ok) return authFailureResponse(auth);
   try {
+    const url = new URL(request.url);
+    const includeArchived = url.searchParams.get("includeArchived") === "true";
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase
       .from("erp_stores")
-      .select("id,name,client_name,manager_name,category,region,contract_start_date,contract_period_weeks,naver_mid,naver_place_url,memo,created_at,updated_at")
+      .select("*")
       .order("name");
 
     if (error) throw error;
-    return NextResponse.json({ stores: data ?? [] });
+    const stores = (data ?? []).filter((store) => includeArchived || (store.lifecycle_status ?? "active") !== "archived");
+    return NextResponse.json({ stores });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Store query failed" },
@@ -26,26 +30,27 @@ export async function POST(request: Request) {
   const auth = authenticateRequest(request, { roles: ["admin"] });
   if (!auth.ok) return authFailureResponse(auth);
   try {
-    const body = await request.json();
-    const name = typeof body.name === "string" ? body.name.trim() : "";
-    if (!name) return NextResponse.json({ error: "name is required" }, { status: 400 });
-
+    const body = await request.json() as StoreRecord;
     const supabase = getSupabaseAdmin();
+    let organizationId = typeof body.organizationId === "string" ? body.organizationId.trim() : "";
+    if (!organizationId) {
+      const { data: organization, error: organizationError } = await supabase
+        .from("organizations")
+        .select("id")
+        .eq("status", "active")
+        .order("created_at")
+        .limit(1)
+        .maybeSingle();
+      if (organizationError) throw organizationError;
+      organizationId = organization?.id ?? "";
+    }
+    if (!organizationId) {
+      return NextResponse.json({ error: "active organization is required" }, { status: 409 });
+    }
+
     const { data, error } = await supabase
       .from("erp_stores")
-      .insert({
-        name,
-        client_name: body.clientName ?? null,
-        manager_name: body.managerName ?? null,
-        category: body.category ?? null,
-        region: body.region ?? null,
-        contract_start_date: body.contractStartDate ?? null,
-        contract_period_weeks: Number(body.contractPeriodWeeks ?? 4),
-        naver_mid: body.naverMid ?? null,
-        naver_place_url: body.naverPlaceUrl ?? null,
-        memo: body.memo ?? null,
-        account_data: body.accountData ?? {},
-      })
+      .insert(buildStoreInsert(body, organizationId))
       .select()
       .single();
 
@@ -54,7 +59,7 @@ export async function POST(request: Request) {
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Store creation failed" },
-      { status: 500 },
+      { status: error instanceof StoreValidationError ? 400 : 500 },
     );
   }
 }

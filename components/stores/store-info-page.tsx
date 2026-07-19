@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useStoreRegistry } from "@/components/stores/store-registry-context";
 
 type TaskItem = {
   week: 1 | 2 | 3 | 4;
@@ -292,16 +293,22 @@ export function StoreInfoPage({
   onBack,
   setView,
   onSaveStore,
+  onArchiveStore,
   stores,
 }: {
   weeklyTasks: TaskItem[];
   onBack: () => void;
   setView: (view: StoreViewId) => void;
-  onSaveStore?: (profile: Pick<StoreProfile, "storeName" | "manager" | "contractPeriod" | "memo">) => void;
+  onSaveStore?: (
+    storeId: string | null,
+    profile: Pick<StoreProfile, "clientName" | "storeName" | "industry" | "region" | "manager" | "startDate" | "contractPeriod" | "placeUrl" | "placeMid" | "memo">,
+  ) => void;
+  onArchiveStore?: (storeId: string) => void;
   stores?: StoreRow[];
 }) {
+  const { selectedStoreId, selectStore: setSelectedStoreId } = useStoreRegistry();
   const [profile, setProfile] = useState<StoreProfile>(defaultStoreProfile);
-  const [selectedStoreId, setSelectedStoreId] = useState(stores?.[0]?.id ?? "");
+  const [creating, setCreating] = useState(false);
   const [goldenKeywordJobs, setGoldenKeywordJobs] = useState<GoldenKeywordJob[]>([]);
   const [registeredGoldenKeywords, setRegisteredGoldenKeywords] = useState<Record<string, boolean>>({});
   const [callHistories, setCallHistories] = useState<CallHistory[]>([]);
@@ -394,6 +401,7 @@ export function StoreInfoPage({
     if (!selectedStoreId || !stores?.length) return;
     const selectedStore = stores.find((store) => store.id === selectedStoreId);
     if (!selectedStore) return;
+    setCreating(false);
     setProfile((current) => ({
       ...current,
       storeName: selectedStore.name,
@@ -418,11 +426,12 @@ export function StoreInfoPage({
   const saveProfile = () => {
     window.localStorage.setItem("erp:store-profile", JSON.stringify(profile));
     window.localStorage.setItem("erp:store-weekly-tasks", JSON.stringify(storeTasks));
-    onSaveStore?.(profile);
+    onSaveStore?.(creating ? null : selectedStoreId, profile);
     setSavedAt(new Date().toLocaleString("ko-KR"));
   };
 
   const resetProfile = () => {
+    setCreating(true);
     setProfile(blankStoreProfile);
     setStoreTasks([]);
     window.localStorage.removeItem("erp:store-profile");
@@ -638,14 +647,23 @@ export function StoreInfoPage({
         </div>
         <div className="filter-row">
           <button className="btn btn-light" onClick={onBack} type="button">뒤로가기</button>
-          <button className="btn btn-light" onClick={resetProfile} type="button">초기화</button>
+          <button className="btn btn-light" onClick={resetProfile} type="button">신규 매장</button>
+          <button className="btn btn-light" disabled={creating || !selectedStoreId} onClick={() => onArchiveStore?.(selectedStoreId)} type="button">보관</button>
           <button className="btn btn-primary" onClick={saveProfile} type="button">저장</button>
         </div>
       </div>
 
       <section className="store-summary-strip">
         {stores?.length ? (
-          <select className="store-switch-select" value={selectedStoreId} onChange={(event) => setSelectedStoreId(event.target.value)}>
+          <select
+            className="store-switch-select"
+            value={creating ? "" : selectedStoreId}
+            onChange={(event) => {
+              setCreating(false);
+              setSelectedStoreId(event.target.value);
+            }}
+          >
+            {creating && <option value="">신규 매장 작성 중</option>}
             {stores.map((store) => (
               <option key={store.id} value={store.id}>{store.name}</option>
             ))}

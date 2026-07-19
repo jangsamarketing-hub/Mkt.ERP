@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useStoreRegistry } from "@/components/stores/store-registry-context";
 
 type StoreRow = {
   id: string;
@@ -64,9 +65,9 @@ function extractCallCandidates(text: string, storeName: string) {
 }
 
 export function DailyTasksPage({ stores, initialDailyInboxTasks }: DailyTasksPageProps) {
+  const { selectedStoreId, selectStore: setSelectedStoreId } = useStoreRegistry();
   const today = "2026-07-12";
   const [inboxTasks, setInboxTasks] = useState<DailyInboxTask[]>(() => initialDailyInboxTasks);
-  const [selectedStoreId, setSelectedStoreId] = useState(stores[0]?.id ?? "");
   const [taskName, setTaskName] = useState("사장님 요청: 신메뉴 사진 교체");
   const [quickTaskName, setQuickTaskName] = useState("");
   const [dueDate, setDueDate] = useState(today);
