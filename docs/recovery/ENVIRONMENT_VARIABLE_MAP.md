@@ -8,6 +8,10 @@
 |---|---|---|---|
 | `SUPABASE_URL` | `lib/supabase/admin.ts` | ERP Supabase URL | 서버 전용 |
 | `SUPABASE_SERVICE_ROLE_KEY` | `lib/supabase/admin.ts` | 관리자 DB client | 절대 클라이언트 노출 금지 |
+| `ERP_ADMIN_USERNAME` | `app/api/auth/login/route.ts` | Stage 1B 임시 고정 관리자 아이디 | 서버 전용 |
+| `ERP_ADMIN_PASSWORD_HASH` | `app/api/auth/login/route.ts` | scrypt 비밀번호 hash | 원문 금지, 서버 전용 |
+| `AUTH_SESSION_SECRET` | `lib/auth/session.ts` | 로그인 쿠키 HMAC 서명 | 32자 이상, 서버 전용 |
+| `AUTH_SESSION_TTL_SECONDS` | `app/api/auth/login/route.ts` | 관리자 세션 만료 초 | 기본 28,800초 |
 | `NAVER_SEARCHAD_CUSTOMER_ID` | `app/api/naver-searchad/keyword-volume/route.ts` | 검색광고 고객 ID | 서버 전용 |
 | `NAVER_SEARCHAD_ACCESS_LICENSE` | 같은 route | API access license | 서버 전용 |
 | `NAVER_SEARCHAD_SECRET_KEY` | 같은 route | API 서명 | 서버 전용 |
@@ -56,4 +60,3 @@
 - Supabase JWT 형태, Naver secret, API key pattern 검사
 - screenshot과 markdown에 실제 계정 비밀번호가 없는지 확인
 - 브라우저 console과 test fixture에 secret이 없는지 확인
-

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import { DailyTasksPage } from "@/components/daily-tasks/daily-tasks-page";
+import { LogoutButton } from "@/components/auth/logout-button";
 import { StoreInfoPage } from "@/components/stores/store-info-page";
 import {
   BarChart3,
@@ -2550,7 +2551,10 @@ export default function HomePage() {
   return (
     <div className="erp-shell">
       <Sidebar activeView={activeView} setView={navigateTo} />
-      <main className="main">{content}</main>
+      <main className="main">
+        <LogoutButton />
+        {content}
+      </main>
     </div>
   );
 }

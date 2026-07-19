@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
+import { authenticateRequest, authFailureResponse } from "@/lib/auth/request";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const auth = authenticateRequest(request, { roles: ["admin"] });
+  if (!auth.ok) return authFailureResponse(auth);
   try {
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase
@@ -20,6 +23,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const auth = authenticateRequest(request, { roles: ["admin"] });
+  if (!auth.ok) return authFailureResponse(auth);
   try {
     const body = await request.json();
     const name = typeof body.name === "string" ? body.name.trim() : "";

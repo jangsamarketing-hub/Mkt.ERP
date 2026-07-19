@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { authenticateRequest, authFailureResponse } from "@/lib/auth/request";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 function isoDate(date: Date) {
@@ -13,6 +14,8 @@ function mondayOf(dateText: string) {
 }
 
 export async function GET(request: Request) {
+  const auth = authenticateRequest(request, { roles: ["admin"] });
+  if (!auth.ok) return authFailureResponse(auth);
   try {
     const url = new URL(request.url);
     const currentMonday = mondayOf(url.searchParams.get("date") ?? "");

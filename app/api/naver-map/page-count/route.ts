@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { authenticateRequest, authFailureResponse } from "@/lib/auth/request";
 
 export const runtime = "nodejs";
 
@@ -37,6 +38,8 @@ function inferPageCount(payload: unknown): number | null {
 }
 
 export async function GET(request: Request) {
+  const auth = authenticateRequest(request, { roles: ["admin", "staff"] });
+  if (!auth.ok) return authFailureResponse(auth);
   const { searchParams } = new URL(request.url);
   const keyword = searchParams.get("keyword")?.trim();
 

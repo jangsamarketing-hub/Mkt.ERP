@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
+import { authenticateRequest, authFailureResponse } from "@/lib/auth/request";
 import {
   buildCreditTransactionUid,
   CREDIT_FINANCE_PARSER_VERSION,
@@ -22,12 +23,16 @@ function monthPath(date: string) {
 }
 
 export async function GET(request: Request) {
+  const initialAuth = authenticateRequest(request);
+  if (!initialAuth.ok) return authFailureResponse(initialAuth);
   try {
     const url = new URL(request.url);
     const storeId = url.searchParams.get("storeId")?.trim();
     const start = url.searchParams.get("start")?.trim();
     const end = url.searchParams.get("end")?.trim();
     if (!storeId) return NextResponse.json({ error: "storeId is required" }, { status: 400 });
+    const storeAuth = authenticateRequest(request, { storeId });
+    if (!storeAuth.ok) return authFailureResponse(storeAuth);
 
     const supabase = getSupabaseAdmin();
     let importQuery = supabase
@@ -106,6 +111,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const initialAuth = authenticateRequest(request);
+  if (!initialAuth.ok) return authFailureResponse(initialAuth);
   let importId = "";
   try {
     const form = await request.formData();
@@ -114,6 +121,8 @@ export async function POST(request: Request) {
     if (!storeId || !(file instanceof File)) {
       return NextResponse.json({ error: "storeId and XLS file are required" }, { status: 400 });
     }
+    const storeAuth = authenticateRequest(request, { storeId });
+    if (!storeAuth.ok) return authFailureResponse(storeAuth);
     if (!/\.xlsx?$/i.test(file.name)) {
       return NextResponse.json({ error: "XLS or XLSX file only" }, { status: 415 });
     }

@@ -12,7 +12,9 @@ const patterns = [
   { name: "JWT-like secret", regex: /eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}/g },
   { name: "OpenAI-style API key", regex: /\bsk-[A-Za-z0-9_-]{20,}\b/g },
   { name: "committed Supabase service key", regex: /SUPABASE_(?:SERVICE_ROLE|SECRET)_KEY\s*=\s*[^\s#][^\r\n]*/g },
-  { name: "committed Naver secret", regex: /NAVER_SEARCHAD_SECRET_KEY\s*=\s*[^\s#][^\r\n]*/g }
+  { name: "committed Naver secret", regex: /NAVER_SEARCHAD_SECRET_KEY\s*=\s*[^\s#][^\r\n]*/g },
+  { name: "committed admin plaintext password", regex: /ERP_ADMIN_PASSWORD\s*=\s*[^\s#][^\r\n]*/g },
+  { name: "hardcoded admin plaintext password", regex: /ERP_ADMIN_PASSWORD\s*[:=]\s*["'][^"']+["']/g }
 ];
 
 const findings = [];

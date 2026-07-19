@@ -54,6 +54,28 @@ a {
   min-height: 100vh;
 }
 
+.logout-button {
+  position: fixed;
+  top: 14px;
+  right: 18px;
+  z-index: 50;
+  height: 34px;
+  padding: 0 13px;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  background: rgb(255 255 255 / 94%);
+  color: #475569;
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: 0 5px 16px rgb(15 23 42 / 8%);
+  cursor: pointer;
+}
+
+.logout-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
 .sidebar {
   position: sticky;
   top: 0;

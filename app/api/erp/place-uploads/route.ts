@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
+import { authenticateRequest, authFailureResponse } from "@/lib/auth/request";
 import { parsePlaceInsightCsv, PLACE_CSV_PARSER_VERSION, type PlaceMetricRow } from "@/lib/place-csv/parser";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
@@ -35,12 +36,16 @@ function rowValues(row: PlaceMetricRow) {
 }
 
 export async function GET(request: Request) {
+  const initialAuth = authenticateRequest(request);
+  if (!initialAuth.ok) return authFailureResponse(initialAuth);
   try {
     const url = new URL(request.url);
     const storeId = url.searchParams.get("storeId")?.trim();
     const start = url.searchParams.get("start")?.trim();
     const end = url.searchParams.get("end")?.trim();
     if (!storeId) return NextResponse.json({ error: "storeId is required" }, { status: 400 });
+    const storeAuth = authenticateRequest(request, { storeId });
+    if (!storeAuth.ok) return authFailureResponse(storeAuth);
 
     const supabase = getSupabaseAdmin();
     let query = supabase
@@ -85,6 +90,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const initialAuth = authenticateRequest(request);
+  if (!initialAuth.ok) return authFailureResponse(initialAuth);
   let uploadId = "";
   try {
     const form = await request.formData();
@@ -93,6 +100,8 @@ export async function POST(request: Request) {
     if (!storeId || !(file instanceof File)) {
       return NextResponse.json({ error: "storeId and CSV file are required" }, { status: 400 });
     }
+    const storeAuth = authenticateRequest(request, { storeId });
+    if (!storeAuth.ok) return authFailureResponse(storeAuth);
     if (!file.name.toLowerCase().endsWith(".csv")) {
       return NextResponse.json({ error: "CSV file only" }, { status: 415 });
     }

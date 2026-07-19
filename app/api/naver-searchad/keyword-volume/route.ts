@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { NextResponse } from "next/server";
+import { authenticateRequest, authFailureResponse } from "@/lib/auth/request";
 
 export const runtime = "nodejs";
 
@@ -24,6 +25,8 @@ function toNumber(value: string | number | undefined) {
 }
 
 export async function POST(request: Request) {
+  const auth = authenticateRequest(request, { roles: ["admin", "staff"] });
+  if (!auth.ok) return authFailureResponse(auth);
   const customerId = process.env.NAVER_SEARCHAD_CUSTOMER_ID;
   const accessLicense = process.env.NAVER_SEARCHAD_ACCESS_LICENSE;
   const secretKey = process.env.NAVER_SEARCHAD_SECRET_KEY;
