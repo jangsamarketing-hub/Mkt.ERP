@@ -31,10 +31,10 @@
 
 ## 3. migration 순서
 
-1. `202607190005_canonical_store_registry_schema.sql`: nullable 확장 구조와 인덱스 생성
-2. `202607190006_canonical_store_registry_backfill.sql`: 기본 조직 연결, 관리 시작일, 기존 MID 복제
+1. `20260719101740_canonical_store_registry_schema.sql`: nullable 확장 구조와 인덱스 생성
+2. `20260719101811_canonical_store_registry_backfill.sql`: 기본 조직 연결, 관리 시작일, 기존 MID 복제
 3. 읽기 전용 검증 SQL 실행: 모든 `issue_count`와 `orphan_store_ids`가 0인지 확인
-4. `202607190007_canonical_store_registry_constraints.sql`: `organization_id not null` 확정
+4. `20260719101907_canonical_store_registry_constraints.sql`: `organization_id not null` 확정
 
 DDL과 기존 행 backfill을 분리했다. 아직 어느 파일도 원격 ERP Supabase에 적용하지 않았다.
 
@@ -66,7 +66,7 @@ DDL과 기존 행 backfill을 분리했다. 아직 어느 파일도 원격 ERP S
 - 원격 DB 변경: 0건
 - 배포: 하지 않음
 
-Stage 0 원격 감사에서 기존 ERP 연관 테이블의 고아 `store_id`는 0건이었다. 새 migration 적용 뒤에는 `supabase/verification/202607190005_canonical_store_registry_checks.sql`을 다시 실행해야 Stage 1C 원격 Gate를 통과한다.
+Stage 0 원격 감사에서 기존 ERP 연관 테이블의 고아 `store_id`는 0건이었다. 새 migration 적용 뒤에는 `supabase/verification/20260719101740_canonical_store_registry_checks.sql`을 다시 실행해야 Stage 1C 원격 Gate를 통과한다.
 
 ## 7. 위험과 롤백
 
@@ -82,7 +82,7 @@ Stage 0 원격 감사에서 기존 ERP 연관 테이블의 고아 `store_id`는 
 1. 적용 전 schema-only dump와 `erp_stores`, 외부 식별자 백업을 만든다.
 2. 문제 발생 시 애플리케이션을 Stage 1B 커밋으로 되돌린다.
 3. 새 구조는 기존 컬럼을 삭제하거나 기존 `id`를 변경하지 않으므로, 애플리케이션 롤백 후에도 기존 Place/여신 기능은 유지된다.
-4. DB 구조 제거가 꼭 필요할 때만 대표 승인 후 `supabase/rollbacks/202607190005_canonical_store_registry.down.sql`을 검토 실행한다.
+4. DB 구조 제거가 꼭 필요할 때만 대표 승인 후 `supabase/rollbacks/20260719101740_canonical_store_registry.down.sql`을 검토 실행한다.
 
 ## 8. 2026-07-19 원격 사전점검 결과
 

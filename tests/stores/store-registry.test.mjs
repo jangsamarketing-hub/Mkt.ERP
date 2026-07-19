@@ -62,9 +62,9 @@ test("external identifiers are typed and cannot be blank", () => {
 
 test("Stage 1C migrations separate schema, backfill, and invariant enforcement", async () => {
   const base = new URL("../../supabase/migrations/", import.meta.url);
-  const schema = await readFile(new URL("202607190005_canonical_store_registry_schema.sql", base), "utf8");
-  const backfill = await readFile(new URL("202607190006_canonical_store_registry_backfill.sql", base), "utf8");
-  const constraints = await readFile(new URL("202607190007_canonical_store_registry_constraints.sql", base), "utf8");
+  const schema = await readFile(new URL("20260719101740_canonical_store_registry_schema.sql", base), "utf8");
+  const backfill = await readFile(new URL("20260719101811_canonical_store_registry_backfill.sql", base), "utf8");
+  const constraints = await readFile(new URL("20260719101907_canonical_store_registry_constraints.sql", base), "utf8");
   assert.match(schema, /add column if not exists organization_id/i);
   assert.doesNotMatch(schema, /update public\.erp_stores/i);
   assert.match(backfill, /update public\.erp_stores/i);
