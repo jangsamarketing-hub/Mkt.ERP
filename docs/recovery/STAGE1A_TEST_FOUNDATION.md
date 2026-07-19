@@ -111,3 +111,18 @@ Stage 1B는 API 인증 경계만 구현한다.
 - 원격 DB와 UI 대규모 변경 없음
 
 대표 승인 전 Stage 1B로 넘어가지 않는다.
+
+## 8. 주간 JSON 표본 추가 감사
+
+2026-06-29~07-05와 2026-07-06~07-12 주간 JSON 2개를 추가 확인했다.
+
+- schema `2.0.0`, collector `1.4.1` 일치
+- 동일 매장 fingerprint
+- SHA-256 완전 중복 0개
+- 월요일~일요일 7일 기간 2개가 연속되어 주차 gap 0개
+- SmartCall은 두 파일 모두 `summary_only`
+- 첫 주간의 일별 매출은 월경계 때문에 6월 29~30일이 빠졌으나 주간 총액은 complete
+- 월간 6월 일별 fact로 두 날짜를 보충하면 주간 총액 31,829,400원과 정확히 일치
+- 월간 표본의 6월 3일·6일은 날짜 행이 있어도 금액이 null이고 `valueStatus=missing`이므로 실제 0과 구분해야 함
+
+이를 고정하기 위해 `weekly-coverage.ts`, 누락·중복·비정상 주차·일별 상세 누락 테스트, `verify:place-periods` 명령을 추가했다. 상세 정책은 `docs/product/WEEKLY_DATA_INGESTION_POLICY.md`에 기록했다.

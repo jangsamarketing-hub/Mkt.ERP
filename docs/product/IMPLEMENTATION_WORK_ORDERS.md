@@ -68,17 +68,17 @@ API 권한, 데이터 원장, import가 화면보다 먼저다. 광고는 `조�
 ## Stage 3 — 공통 Import Control Plane
 
 - 목표: 모든 업로드가 같은 import job, raw file, 검증, 중복, quarantine, 승인 흐름 사용
-- 포함: Storage MIME JSON/XLSX 보강, checksum, preview, reject reason, import audit
+- 포함: Storage MIME JSON/XLSX 보강, checksum, preview, reject reason, import audit, 월~일 expected period와 누락 주차 ledger
 - 제외: 각 도메인의 신규 분석 UI
-- Gate: 동일 파일 재업로드가 중복 처리되고 실패 row가 분리됨
+- Gate: 동일 파일 재업로드가 중복 처리되고 실패 row가 분리되며 누락 주차가 실제 0과 구분됨
 
 ## Stage 4 — Naver Place JSON 2.0
 
 - 순서: 4A validator/adapter, 4B snapshot/fact, 4C CSV+JSON read model
 - 핵심: `Raw -> Snapshot -> Fact -> Analytics`
-- 포함: schema version, 주/월 grain, module support state, 대표 snapshot, overlap quarantine
+- 포함: 주간 운영 기본값, 월간 bootstrap, schema version, 주/월 grain, module·세부 grain coverage, 대표 snapshot, overlap quarantine, 월간 일별 backfill 대조
 - 제외: 순위 자동수집, 알림톡
-- Gate: 기존 CSV 결과를 깨지 않고 JSON 2.0 월간/주간 fixture 적재
+- Gate: 기존 CSV 결과를 깨지 않고 JSON 2.0 월간/주간 fixture를 적재하며 주간 2개 사이 gap 0, 중복 0을 판정
 
 ## Stage 5 — 여신금융 일·주·월 원장
 

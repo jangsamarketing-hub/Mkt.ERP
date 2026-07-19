@@ -311,11 +311,15 @@
 
 ### 5.4 업로드와 데이터 품질
 
+- 운영 기본 grain은 Place와 여신 모두 월요일~일요일 주간이다.
+- 월간 파일은 최초 과거이력 bootstrap과 월간 보고서 대조용이며 주간 fact와 합산하지 않는다.
 - 업로드 상태는 uploaded → validating → needs_review → approved → processing → complete를 따른다.
 - 승인 전에는 fact가 바뀌지 않는다.
 - 동일 파일은 duplicate, 같은 기간 다른 파일은 revision 또는 conflict다.
 - Place는 source+module+grain+period 단위 대표 snapshot을 선택한다.
-- 주간 CSV와 월간 JSON은 겹친 구간을 합산하지 않는다.
+- 매장별 첫 관리 주차부터 종료된 최근 주차까지 expected period를 생성해 `수집완료/부분수집/누락/중복/수정본/아직 미도래`를 표시한다.
+- 파일 전체 complete와 모듈·세부 grain complete를 분리한다. 주간 합계가 있어도 일별 행이 빠지면 일별 상세는 부분수집이다.
+- 주간 CSV/JSON과 월간 JSON의 겹친 구간을 합산하지 않는다. 월간 일별 값은 주간 상세 누락일을 검증된 경우에만 보충한다.
 - 알 수 없는 schema는 quarantine한다.
 - 원본과 경고·실패 이력은 삭제하지 않는다.
 

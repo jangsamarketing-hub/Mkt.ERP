@@ -11,6 +11,7 @@
     "test": "node --test",
     "test:parsers": "node --test \"tests/parsers/*.test.mjs\"",
     "verify:samples": "node scripts/verify-samples.mjs",
+    "verify:place-periods": "node scripts/verify-place-periods.mjs",
     "check:secrets": "node scripts/check-secrets.mjs"
   },
   "dependencies": {
