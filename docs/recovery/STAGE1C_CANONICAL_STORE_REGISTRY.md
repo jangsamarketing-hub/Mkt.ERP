@@ -4,7 +4,7 @@
 
 브랜치: `recovery/stage-1c-store-registry`
 
-상태: 로컬 구현·검증 완료, 원격 DB 미적용, 배포 안 함
+상태: 원격 ERP DB 적용·검증 완료, 애플리케이션 배포 안 함
 
 ## 1. 목표와 보존 원칙
 
@@ -93,9 +93,31 @@ Stage 0 원격 감사에서 기존 ERP 연관 테이블의 고아 `store_id`는 
 - `erp_stores`에 사용자 trigger가 없어 Stage 1C의 `updated_at` trigger 추가와 충돌하지 않는다.
 - 보안 advisor에는 기존 테이블의 RLS policy 부재와 기존 카드 집계 view 2건의 SECURITY DEFINER 경고가 남아 있다. 이번 migration은 새 테이블에 RLS를 켜고 브라우저 역할의 직접 권한을 회수하므로 해당 기존 경고를 확대하지 않는다. 기존 view 정리는 별도 보안 정비 작업으로 분리한다.
 
-## 9. 대표 승인 전 남은 Gate
+## 9. 원격 적용 결과
 
-1. schema dump를 확보한 임시 DB에서 005 → 006 → 검증 → 007 순서 리허설
-2. 실제 6개 매장의 `production/sample/test` 분류 확정
-3. 기본 조직명과 담당자 프로필 생성 기준 확정
-4. 원격 적용 승인
+적용 일시: 2026-07-19 10:17~10:19 KST
+
+원격 Supabase migration 이력:
+
+1. `20260719101740_canonical_store_registry_schema`
+2. `20260719101811_canonical_store_registry_backfill`
+3. `20260719101907_canonical_store_registry_constraints`
+
+원격 Gate 검증:
+
+- `erp_stores`: 6개 행 보존
+- 기본 organization: 1개 생성
+- `organization_id is null`: 0건, 컬럼은 `not null` 확정
+- 기존 Place upload와 여신 transaction 고아 `store_id`: 각각 0건
+- 외부 식별자 대표값 중복: 0건
+- 신규 원장 5개 테이블: RLS 활성화 확인
+- `anon`과 `authenticated`: 신규 원장 테이블 `select` 권한 없음 확인
+
+Supabase advisor는 신규 원장 테이블에 RLS policy가 없다는 INFO를 표시한다. 이는 현재 브라우저 역할의 DB 권한을 모두 회수하고 서버 service role API만 사용하는 Stage 1C 설계에 따른 것이다. 직원·사장님 계정이 도입되는 Stage에서 역할별 RLS policy를 추가한다.
+
+## 10. 다음 Gate
+
+1. 실제 6개 매장의 `production/sample/test` 분류 확정
+2. 기본 조직명과 담당자 프로필 생성 기준 확정
+3. 배포 전 Stage 1C 운영 화면 smoke test
+4. 승인 후 Import Control Plane(Stage 2)로 진행
