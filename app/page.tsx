@@ -854,7 +854,7 @@ function AdminDailyPage({ rows = stores }: { rows?: StoreRow[] }) {
     월: [
       makeRoutine("월", 1, "금일 업무 단톡 공유", "진행 사항 안내 및 주간 보고서 작성 사항 확인"),
       makeRoutine("월", 2, "재계약 딜레이 확인", "ERP 확인 후 특이사항 사수에게 요청"),
-      makeRoutine("월", 3, "장사닥터 재계약 갱신 여부 체크", "전 주 재계약 완료 후 업무 최신화 사항 확인"),
+      makeRoutine("월", 3, "재계약 갱신 여부 체크", "전 주 재계약 완료 후 업무 최신화 사항 확인"),
       makeRoutine("월", 4, "주말 문의사항 미답변 체크", "미답변 사수 소통 여부 확인"),
       makeRoutine("월", 5, "네이버 공지사항 확인", "검색광고 포함 변동 확인"),
       makeRoutine("월", 6, "업체 특이사항 확인", "17시 캠페인 확인"),
@@ -883,7 +883,7 @@ function AdminDailyPage({ rows = stores }: { rows?: StoreRow[] }) {
     금: [
       makeRoutine("금", 1, "금일 업무 단톡 공유", "재계약 최종 독촉 요청"),
       makeRoutine("금", 2, "금주 재계약 업체 입금 딜레이 체크", "금액 메이드 지시"),
-      makeRoutine("금", 3, "장사닥터 재계약 갱신", "완료 업체 정리"),
+      makeRoutine("금", 3, "재계약 갱신", "완료 업체 정리"),
       makeRoutine("금", 4, "재계약 딜레이 여부 확인", "사유 확인 및 표시 요청"),
       makeRoutine("금", 5, "검색광고 비용 충전 안내", "각 사수 검색광고 비용 확인 요청"),
     ],
