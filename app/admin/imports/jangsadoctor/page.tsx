@@ -27,6 +27,14 @@ type PreviewResponse = {
   commitAvailable: boolean;
 };
 
+type CanonicalStoreOption = { id: string; name: string; environment: string | null; lifecycle_status: string | null; manager_name: string | null };
+type MappingPreview = {
+  mode: "mapping_preview";
+  stores: CanonicalStoreOption[];
+  rows: Array<{ sourceCompanyId: string; storeName: string; status: "already_linked" | "candidate_found" | "unmatched"; linkedStoreId: string | null; candidateStoreIds: string[] }>;
+  summary: { total: number; alreadyLinked: number; candidateFound: number; unmatched: number };
+};
+
 const examplePayload = {
   schema_version: "1.0.0",
   snapshot_type: "initial_snapshot",
@@ -56,11 +64,14 @@ export default function SalesHistoryImportPreviewPage() {
   const [message, setMessage] = useState("장사 ERP JSON 또는 CSV를 붙여넣거나 올리세요. 미리보기는 DB를 변경하지 않습니다.");
   const [loading, setLoading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
+  const [mapping, setMapping] = useState<MappingPreview | null>(null);
+  const [mappingMessage, setMappingMessage] = useState("");
   const parsedLabel = useMemo(() => payload.trim() ? `${payload.length.toLocaleString("ko-KR")}자 입력됨` : "입력 없음", [payload]);
 
   const loadExample = () => {
     setPayload(JSON.stringify(examplePayload, null, 2));
     setResult(null);
+    setMapping(null);
     setMessage("비식별 예시 JSON을 불러왔습니다. 미리보기 검사를 누르면 됩니다.");
   };
 
@@ -71,12 +82,14 @@ export default function SalesHistoryImportPreviewPage() {
       const converted = convertSalesHistoryCsvToBatch(text);
       setPayload(JSON.stringify(converted.payload, null, 2));
       setResult(null);
+      setMapping(null);
       setMessage(`${file.name}을 ${converted.dailyRowCount.toLocaleString("ko-KR")}개 일별 매출 행으로 변환했습니다. 제외 ${converted.skippedRowCount}행 · 오류 제외 ${converted.errorRowCount}행. 이제 미리보기 검사를 누르세요.`);
       return;
     }
     if (!fileName.endsWith(".json")) throw new Error("장사 ERP 과거 매출 JSON 또는 CSV 파일만 올릴 수 있습니다.");
     setPayload(text);
     setResult(null);
+    setMapping(null);
     setMessage(`${file.name}을 불러왔습니다. 아직 DB에는 저장되지 않았습니다.`);
   };
 
@@ -104,6 +117,7 @@ export default function SalesHistoryImportPreviewPage() {
 
   const preview = async () => {
     setResult(null);
+    setMapping(null);
     if (!payload.trim()) {
       setMessage("검사할 JSON이 없습니다.");
       return;
@@ -136,6 +150,25 @@ export default function SalesHistoryImportPreviewPage() {
       setMessage(error instanceof Error ? error.message : "미리보기 요청에 실패했습니다.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadMappingPreview = async () => {
+    if (!result?.batch) return;
+    setMapping(null);
+    setMappingMessage("맞춤장사 OS 매장 원장과 기존 연결 이력을 확인하고 있습니다.");
+    try {
+      const response = await fetch("/api/admin/migrations/jangsadoctor/mapping-preview", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ sources: result.batch.stores.map((store) => ({ sourceCompanyId: store.sourceCompanyId, storeName: store.storeName })) }),
+      });
+      const data = await response.json() as MappingPreview & { error?: string };
+      if (!response.ok) throw new Error(data.error ?? "매장 연결 상태를 불러오지 못했습니다.");
+      setMapping(data);
+      setMappingMessage("연결 상태를 불러왔습니다. 추천은 자동 저장되지 않습니다.");
+    } catch (error) {
+      setMappingMessage(error instanceof Error ? error.message : "매장 연결 상태를 불러오지 못했습니다.");
     }
   };
 
@@ -180,7 +213,7 @@ export default function SalesHistoryImportPreviewPage() {
             <Metric label="일별 매출 행" value={`${result.revenue.rowCount.toLocaleString("ko-KR")}일`} detail={`합계 ${formatNumber(result.revenue.totalAmount)}원 · ${formatNumber(result.revenue.totalCount)}건`} />
             <Metric label="반영 상태" value="저장 전" detail="검수만 완료, DB 변경 없음" />
           </div>
-          {result.mode === "batch_preview" && result.batch && <BatchTable stores={result.batch.stores} />}
+          {result.mode === "batch_preview" && result.batch && <><BatchTable stores={result.batch.stores} /><section className="rounded-xl border border-slate-200 bg-white p-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-bold">2. 맞춤장사 OS 매장 연결 검수</h3><p className="mt-1 text-sm text-slate-500">매장명이 같아도 자동 연결하거나 저장하지 않습니다.</p></div><button className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white" onClick={loadMappingPreview} type="button">매장 연결 상태 확인</button></div>{mappingMessage && <p className="mt-3 text-sm text-slate-600">{mappingMessage}</p>}{mapping && <MappingTable mapping={mapping} />}</section></>}
           <div className="grid gap-4 md:grid-cols-2">
             <IssueList empty="경고 없음" issues={result.warnings} title="확인할 경고" />
             <IssueList empty="오류 없음" issues={result.errors} title="반영 전 오류" />
@@ -198,6 +231,16 @@ function Metric({ label, value, detail }: { label: string; value: string; detail
 
 function BatchTable({ stores }: { stores: BatchStore[] }) {
   return <section className="overflow-hidden rounded-xl border border-slate-200 bg-white"><div className="border-b border-slate-200 p-4"><h3 className="font-bold">매장별 검수 결과</h3><p className="mt-1 text-sm text-slate-500">이름만으로 기존 매장에 합치지 않습니다. 다음 단계에서 매장별로 연결합니다.</p></div><div className="max-h-96 overflow-auto"><table className="min-w-full text-left text-sm"><thead className="sticky top-0 bg-slate-100 text-slate-600"><tr><th className="px-4 py-3">매장</th><th className="px-4 py-3">일수</th><th className="px-4 py-3">매출 합계</th><th className="px-4 py-3">미제공</th><th className="px-4 py-3">상태</th></tr></thead><tbody>{stores.map((store) => <tr className="border-t border-slate-100" key={store.sourceCompanyId ?? store.storeName}><td className="px-4 py-3"><strong className="block">{store.storeName ?? "확인 필요"}</strong><span className="text-xs text-slate-500">{store.sourceCompanyId ?? "연결키 없음"}</span></td><td className="px-4 py-3">{store.rowCount}</td><td className="px-4 py-3">{formatNumber(store.totalAmount)}원</td><td className="px-4 py-3">{store.unprovidedDateCount}일</td><td className="px-4 py-3">{store.errorCount ? <span className="text-rose-600">오류 {store.errorCount}</span> : store.warningCount ? <span className="text-amber-700">확인 {store.warningCount}</span> : <span className="text-blue-700">정상</span>}</td></tr>)}</tbody></table></div></section>;
+}
+
+function MappingTable({ mapping }: { mapping: MappingPreview }) {
+  const storesById = new Map(mapping.stores.map((store) => [store.id, store]));
+  const statusText = (row: MappingPreview["rows"][number]) => {
+    if (row.status === "already_linked") return "기존 연결 있음";
+    if (row.status === "candidate_found") return "이름 같은 후보 있음";
+    return "연결 후보 없음";
+  };
+  return <div className="mt-4 overflow-hidden rounded-lg border border-slate-200"><div className="grid gap-2 border-b border-slate-200 bg-slate-50 p-3 text-sm md:grid-cols-4"><span>전체 {mapping.summary.total}개</span><span className="text-blue-700">기존 연결 {mapping.summary.alreadyLinked}개</span><span className="text-amber-700">이름 후보 {mapping.summary.candidateFound}개</span><span className="text-slate-600">미연결 {mapping.summary.unmatched}개</span></div><div className="max-h-96 overflow-auto"><table className="min-w-full text-left text-sm"><thead className="sticky top-0 bg-white text-slate-500"><tr><th className="px-4 py-3">기존 ERP 매장</th><th className="px-4 py-3">연결 상태</th><th className="px-4 py-3">맞춤장사 OS 후보</th></tr></thead><tbody>{mapping.rows.map((row) => { const candidates = row.candidateStoreIds.map((id) => storesById.get(id)?.name ?? id); return <tr className="border-t border-slate-100" key={row.sourceCompanyId}><td className="px-4 py-3"><strong className="block">{row.storeName}</strong><span className="text-xs text-slate-500">{row.sourceCompanyId}</span></td><td className="px-4 py-3">{statusText(row)}</td><td className="px-4 py-3">{candidates.length ? candidates.join(", ") : "-"}</td></tr>; })}</tbody></table></div></div>;
 }
 
 function IssueList({ empty, issues, title }: { empty: string; issues: PreviewIssue[]; title: string }) {
