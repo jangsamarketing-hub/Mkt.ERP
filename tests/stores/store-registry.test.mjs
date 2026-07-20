@@ -38,6 +38,14 @@ test("store creation uses one organization and validates lifecycle fields", () =
   assert.throws(() => buildStoreInsert({ name: "X", environment: "demo" }, "org"), StoreValidationError);
 });
 
+test("a store can be registered with its name only before any data upload", () => {
+  const insert = buildStoreInsert({ name: "데이터 없는 신규 매장" }, "22222222-2222-4222-8222-222222222222");
+  assert.equal(insert.name, "데이터 없는 신규 매장");
+  assert.equal(insert.contract_period_weeks, 4);
+  assert.equal(insert.management_start_date, null);
+  assert.deepEqual(insert.account_data, {});
+});
+
 test("archive is reversible metadata, not a hard delete", () => {
   const archive = buildStorePatch({ lifecycleStatus: "archived" });
   assert.equal(archive.lifecycle_status, "archived");

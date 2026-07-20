@@ -109,36 +109,36 @@ type StoreProfile = {
 };
 
 const defaultStoreProfile: StoreProfile = {
-  clientName: "토종곱창",
-  storeName: "토종곱창 철산본점",
-  industry: "음식점",
-  region: "광명 철산",
-  manager: "박상일(경기)",
-  startDate: "2026-06-15",
+  clientName: "",
+  storeName: "",
+  industry: "",
+  region: "",
+  manager: "",
+  startDate: "",
   contractPeriod: "4주",
-  naverId: "owner_naver01",
-  naverPassword: "pw-visible-1234",
-  naverCustomerId: "4174476",
-  naverAccessLicense: "0100000000cef01f6f3a...",
-  naverSecretKey: "secret-visible-key",
-  placeUrl: "https://map.naver.com/...",
-  placeMid: "20250761",
-  instagramId: "@cheolsan_gopchang",
-  instagramPassword: "insta-pw",
-  googleId: "owner@gmail.com",
-  googlePassword: "google-pw",
-  kakaoMapId: "kakao_map_owner",
-  kakaoMapPassword: "kakao-pw",
-  kakaoChannelUrl: "@토종곱창철산",
-  cardSalesId: "card_sales_owner",
-  cardSalesPassword: "card-pw",
-  ownerPersonality: "속도와 결과를 중요하게 보는 편. 보고는 짧고 숫자 중심 선호.",
-  salesHistorySummary: "최초 상담에서 유입 하락과 리뷰 정체를 핵심 문제로 언급. 4주 안에 체감되는 변화 요청.",
-  renewalScore: "7",
-  coreNeeds: "네이버 유입 회복, 리뷰 신뢰도 강화, 주간 보고 체계",
-  coreAnxiety: "광고비만 쓰고 매출 변화가 없는 상황",
-  informationIntro: "사장님 안녕하세요. 마케팅 시작 전 매장 정보와 계정 정보를 확인하기 위한 작성용 페이지입니다.",
-  informationRequestMessage: "아래 링크에 매장 정보, 운영시간, 대표 메뉴, 계정 정보를 작성해주시면 초기 마케팅 방향성과 세팅에 반영하겠습니다.",
+  naverId: "",
+  naverPassword: "",
+  naverCustomerId: "",
+  naverAccessLicense: "",
+  naverSecretKey: "",
+  placeUrl: "",
+  placeMid: "",
+  instagramId: "",
+  instagramPassword: "",
+  googleId: "",
+  googlePassword: "",
+  kakaoMapId: "",
+  kakaoMapPassword: "",
+  kakaoChannelUrl: "",
+  cardSalesId: "",
+  cardSalesPassword: "",
+  ownerPersonality: "",
+  salesHistorySummary: "",
+  renewalScore: "",
+  coreNeeds: "",
+  coreAnxiety: "",
+  informationIntro: "",
+  informationRequestMessage: "",
   informationQuestions: [
     "매장명과 대표자명을 입력해주세요.",
     "매장 주소와 네이버 플레이스 URL을 입력해주세요.",
@@ -148,7 +148,7 @@ const defaultStoreProfile: StoreProfile = {
     "네이버, 인스타그램, 구글, 카카오맵 계정 정보를 입력해주세요.",
     "매장 강점과 현재 가장 고민되는 문제를 알려주세요.",
   ],
-  memo: "--260712--\n정보안내문에서 받은 계정과 내부 등록 정보를 함께 관리합니다.",
+  memo: "",
 };
 
 const defaultSetupItems: SetupItem[] = [
@@ -186,35 +186,6 @@ const industryOptions = [
 
 const blankStoreProfile: StoreProfile = {
   ...defaultStoreProfile,
-  clientName: "",
-  storeName: "",
-  industry: "",
-  region: "",
-  manager: "",
-  startDate: "2026-07-12",
-  contractPeriod: "4주",
-  naverId: "",
-  naverPassword: "",
-  naverCustomerId: "",
-  naverAccessLicense: "",
-  naverSecretKey: "",
-  placeUrl: "",
-  placeMid: "",
-  instagramId: "",
-  instagramPassword: "",
-  googleId: "",
-  googlePassword: "",
-  kakaoMapId: "",
-  kakaoMapPassword: "",
-  kakaoChannelUrl: "",
-  cardSalesId: "",
-  cardSalesPassword: "",
-  ownerPersonality: "",
-  salesHistorySummary: "",
-  renewalScore: "",
-  coreNeeds: "",
-  coreAnxiety: "",
-  memo: "",
 };
 
 const weekdayLabels = ["일", "월", "화", "수", "목", "금", "토"];
@@ -295,6 +266,7 @@ export function StoreInfoPage({
   onSaveStore,
   onArchiveStore,
   stores,
+  createRequest = 0,
 }: {
   weeklyTasks: TaskItem[];
   onBack: () => void;
@@ -305,6 +277,7 @@ export function StoreInfoPage({
   ) => void;
   onArchiveStore?: (storeId: string) => void;
   stores?: StoreRow[];
+  createRequest?: number;
 }) {
   const { selectedStoreId, selectStore: setSelectedStoreId } = useStoreRegistry();
   const [profile, setProfile] = useState<StoreProfile>(defaultStoreProfile);
@@ -339,20 +312,12 @@ export function StoreInfoPage({
   const informationUrl = useMemo(() => `https://장사닥터.com/information-questions/${profile.placeMid}`, [profile.placeMid]);
 
   useEffect(() => {
-    const savedProfile = window.localStorage.getItem("erp:store-profile");
     const savedTasks = window.localStorage.getItem("erp:store-weekly-tasks");
     const savedSetupItems = window.localStorage.getItem("erp:setup-items-by-month");
     const savedSetupPhotos = window.localStorage.getItem("erp:setup-photos");
     const savedGoldenJobs = window.localStorage.getItem("erp-golden-keyword-jobs");
     const savedRegisteredKeywords = window.localStorage.getItem("erp:registered-golden-keywords");
     const savedCallHistories = window.localStorage.getItem("erp:call-histories");
-    if (savedProfile) {
-      try {
-        setProfile({ ...defaultStoreProfile, ...(JSON.parse(savedProfile) as StoreProfile) });
-      } catch {
-        window.localStorage.removeItem("erp:store-profile");
-      }
-    }
     if (savedTasks) {
       try {
         setStoreTasks(JSON.parse(savedTasks) as StoreTaskItem[]);
@@ -398,6 +363,14 @@ export function StoreInfoPage({
   }, []);
 
   useEffect(() => {
+    if (!createRequest) return;
+    setCreating(true);
+    setProfile(blankStoreProfile);
+    setStoreTasks([]);
+    setSavedAt("");
+  }, [createRequest]);
+
+  useEffect(() => {
     if (!selectedStoreId || !stores?.length) return;
     const selectedStore = stores.find((store) => store.id === selectedStoreId);
     if (!selectedStore) return;
@@ -424,7 +397,6 @@ export function StoreInfoPage({
   }, [registeredGoldenKeywords]);
 
   const saveProfile = () => {
-    window.localStorage.setItem("erp:store-profile", JSON.stringify(profile));
     window.localStorage.setItem("erp:store-weekly-tasks", JSON.stringify(storeTasks));
     onSaveStore?.(creating ? null : selectedStoreId, profile);
     setSavedAt(new Date().toLocaleString("ko-KR"));
@@ -434,7 +406,6 @@ export function StoreInfoPage({
     setCreating(true);
     setProfile(blankStoreProfile);
     setStoreTasks([]);
-    window.localStorage.removeItem("erp:store-profile");
     window.localStorage.removeItem("erp:store-weekly-tasks");
     setSavedAt("");
   };
@@ -783,23 +754,17 @@ export function StoreInfoPage({
         <div>
           <h2>네이버/검색광고</h2>
           <Field label="네이버 ID" field="naverId" profile={profile} setProfile={setProfile} />
-          <Field label="네이버 PW" field="naverPassword" profile={profile} setProfile={setProfile} />
           <Field label="Customer ID" field="naverCustomerId" profile={profile} setProfile={setProfile} />
-          <Field label="Access License" field="naverAccessLicense" profile={profile} setProfile={setProfile} />
-          <Field label="Secret Key" field="naverSecretKey" profile={profile} setProfile={setProfile} />
+          <p className="plain-text">비밀번호·Secret Key는 이 화면에 입력하거나 저장하지 않습니다. 추후 승인형 연동 설정에서 별도로 연결합니다.</p>
         </div>
 
         <div>
           <h2>SNS/외부 계정</h2>
           <Field label="인스타그램 ID" field="instagramId" profile={profile} setProfile={setProfile} />
-          <Field label="인스타그램 PW" field="instagramPassword" profile={profile} setProfile={setProfile} />
           <Field label="구글 ID" field="googleId" profile={profile} setProfile={setProfile} />
-          <Field label="구글 PW" field="googlePassword" profile={profile} setProfile={setProfile} />
           <Field label="카카오맵 ID" field="kakaoMapId" profile={profile} setProfile={setProfile} />
-          <Field label="카카오맵 PW" field="kakaoMapPassword" profile={profile} setProfile={setProfile} />
           <Field label="카카오톡 채널" field="kakaoChannelUrl" profile={profile} setProfile={setProfile} />
-          <Field label="여신금융 ID" field="cardSalesId" profile={profile} setProfile={setProfile} />
-          <Field label="여신금융 PW" field="cardSalesPassword" profile={profile} setProfile={setProfile} />
+          <p className="plain-text">외부 서비스 비밀번호와 금융 로그인 정보는 저장하지 않습니다. 매출 파일은 업로드 방식으로 연결합니다.</p>
         </div>
       </section>
 

@@ -1000,11 +1000,13 @@ function Dashboard({
   setView,
   rows = stores,
   onImportStores,
+  onCreateStore,
   importStatus,
 }: {
   setView: (view: ViewId) => void;
   rows?: StoreRow[];
   onImportStores?: (file: File | undefined) => void;
+  onCreateStore?: () => void;
   importStatus?: string;
 }) {
   const { selectStore } = useStoreRegistry();
@@ -1111,7 +1113,7 @@ function Dashboard({
             <a className="btn btn-light" href="/admin/imports/jangsadoctor">
               과거 매출 이관
             </a>
-            <button className="btn btn-light" onClick={() => setView("store")} type="button">
+            <button className="btn btn-light" onClick={onCreateStore} type="button">
               <Building2 size={16} />
               업체 추가
             </button>
@@ -2449,12 +2451,17 @@ function HomePageContent() {
   const [activeView, setActiveView] = useState<ViewId>("dashboard");
   const [previousView, setPreviousView] = useState<ViewId>("dashboard");
   const [storeImportStatus, setStoreImportStatus] = useState("");
+  const [storeCreateRequest, setStoreCreateRequest] = useState(0);
   const storeRows = useMemo(() => registryStores.map(canonicalStoreToRow), [registryStores]);
   const navigateTo = (view: ViewId) => {
     setPreviousView(activeView);
     setActiveView(view);
   };
   const goBack = () => setActiveView(previousView);
+  const createStore = () => {
+    setStoreCreateRequest((value) => value + 1);
+    navigateTo("store");
+  };
 
   const importStoresFromExcel = async (file: File | undefined): Promise<BulkStoreImportResult | null> => {
     if (!file) return null;
@@ -2563,13 +2570,13 @@ function HomePageContent() {
       case "owner":
         return <OwnerReportPage />;
       case "store":
-        return <StoreInfoPage stores={storeRows} weeklyTasks={weeklyTasks} onBack={goBack} setView={navigateTo} onSaveStore={saveStoreRow} onArchiveStore={archiveStoreRow} />;
+        return <StoreInfoPage createRequest={storeCreateRequest} stores={storeRows} weeklyTasks={weeklyTasks} onBack={goBack} setView={navigateTo} onSaveStore={saveStoreRow} onArchiveStore={archiveStoreRow} />;
       case "questionnaire":
         return <QuestionnairePage />;
       case "weeklyFlow":
         return <WeeklyFlowPage setView={navigateTo} />;
       default:
-        return <Dashboard setView={navigateTo} rows={storeRows} onImportStores={importStoresFromExcel} importStatus={storeImportStatus} />;
+        return <Dashboard setView={navigateTo} rows={storeRows} onCreateStore={createStore} onImportStores={importStoresFromExcel} importStatus={storeImportStatus} />;
     }
   })();
 
