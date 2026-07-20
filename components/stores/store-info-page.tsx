@@ -305,11 +305,14 @@ export function StoreInfoPage({
     influencerHistory: ["2026-05-01"],
   });
   const [savedAt, setSavedAt] = useState("");
+  const [creditUploadStatus, setCreditUploadStatus] = useState("");
+  const [placeUploadStatus, setPlaceUploadStatus] = useState("");
+  const [uploading, setUploading] = useState<"credit" | "place" | null>(null);
   const [selectedWeek, setSelectedWeek] = useState<1 | 2 | 3 | 4>(4);
   const setupItems = setupItemsByMonth[selectedSetupMonth] ?? defaultSetupItems;
   const monthlySetupPhotos = setupPhotos.filter((photo) => photo.month === selectedSetupMonth);
-  const ownerReportUrl = useMemo(() => `https://장사닥터.com/companies/${profile.placeMid}/detail`, [profile.placeMid]);
-  const informationUrl = useMemo(() => `https://장사닥터.com/information-questions/${profile.placeMid}`, [profile.placeMid]);
+  const ownerReportUrl = useMemo(() => `/owner/${profile.placeMid || "store"}`, [profile.placeMid]);
+  const informationUrl = useMemo(() => `/information/${profile.placeMid || "store"}`, [profile.placeMid]);
 
   useEffect(() => {
     const savedTasks = window.localStorage.getItem("erp:store-weekly-tasks");
@@ -411,8 +414,47 @@ export function StoreInfoPage({
   };
 
   const copyText = async (text: string) => {
-    await navigator.clipboard.writeText(text);
+    await navigator.clipboard.writeText(new URL(text, window.location.origin).toString());
     setSavedAt("링크 복사 완료");
+  };
+
+  const uploadStoreFile = async (kind: "credit" | "place", file: File | undefined) => {
+    if (!file) return;
+    if (!selectedStoreId || creating) {
+      setSavedAt("먼저 업체명을 저장한 뒤 파일을 올려주세요.");
+      return;
+    }
+    const endpoint = kind === "credit"
+      ? "/api/erp/card-uploads"
+      : file.name.toLowerCase().endsWith(".json")
+        ? "/api/erp/naver-json-uploads"
+        : "/api/erp/place-uploads";
+    if (kind === "credit" && !/\.xlsx?$/i.test(file.name)) {
+      setCreditUploadStatus("여신금융 원본은 XLS 또는 XLSX 파일만 올릴 수 있습니다.");
+      return;
+    }
+    if (kind === "place" && !/\.(json|csv)$/i.test(file.name)) {
+      setPlaceUploadStatus("네이버 플레이스는 현재 JSON 또는 CSV 파일만 올릴 수 있습니다. Excel은 형식 샘플 확인 뒤 추가합니다.");
+      return;
+    }
+    setUploading(kind);
+    const form = new FormData();
+    form.set("storeId", selectedStoreId);
+    form.set("file", file);
+    try {
+      const response = await fetch(endpoint, { method: "POST", body: form });
+      const payload = await response.json() as { error?: string; duplicate?: boolean };
+      if (!response.ok) throw new Error(payload.error ?? "파일 등록에 실패했습니다.");
+      const message = payload.duplicate ? "같은 원본이 이미 등록되어 있습니다." : "파일을 등록했습니다. 데이터 화면에서 확인할 수 있습니다.";
+      if (kind === "credit") setCreditUploadStatus(message);
+      else setPlaceUploadStatus(message);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "파일 등록에 실패했습니다.";
+      if (kind === "credit") setCreditUploadStatus(message);
+      else setPlaceUploadStatus(message);
+    } finally {
+      setUploading(null);
+    }
   };
 
   const updateTask = (id: string, patch: Partial<StoreTaskItem>) => {
@@ -646,6 +688,30 @@ export function StoreInfoPage({
         <span>담당자 {profile.manager}</span>
         <span>관리 {profile.contractPeriod}</span>
         {savedAt && <em>{savedAt}</em>}
+      </section>
+
+      <section className="panel">
+        <div className="section-headline">
+          <div>
+            <h2>매장 데이터 파일 등록</h2>
+            <p className="plain-text">선택한 매장에만 연결됩니다. 같은 원본은 중복 저장하지 않으며, 먼저 매장을 저장해야 합니다.</p>
+          </div>
+        </div>
+        <div className="store-link-actions">
+          <label className="btn btn-light">
+            {uploading === "credit" ? "여신금융 등록 중" : "여신금융 매출 등록"}
+            <input accept=".xls,.xlsx" disabled={uploading !== null} hidden onChange={(event) => uploadStoreFile("credit", event.target.files?.[0])} type="file" />
+          </label>
+          <span className="plain-text">{creditUploadStatus || "XLS/XLSX · 매장별 카드 매출 원본"}</span>
+        </div>
+        <div className="store-link-actions">
+          <label className="btn btn-light">
+            {uploading === "place" ? "네이버 등록 중" : "네이버 플레이스 등록"}
+            <input accept=".json,.csv" disabled={uploading !== null} hidden onChange={(event) => uploadStoreFile("place", event.target.files?.[0])} type="file" />
+          </label>
+          <span className="plain-text">{placeUploadStatus || "JSON 또는 CSV · 기간, 원본, 수집 상태를 매장별로 보관"}</span>
+        </div>
+        <p className="plain-text">네이버 Excel 형식은 실제 샘플 규격을 확인한 뒤 추가합니다. 현재는 JSON과 CSV만 숫자 데이터로 처리합니다.</p>
       </section>
 
       <section className="panel">

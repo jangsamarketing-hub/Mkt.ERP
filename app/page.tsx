@@ -1001,12 +1001,14 @@ function Dashboard({
   rows = stores,
   onImportStores,
   onCreateStore,
+  onBulkCreateStores,
   importStatus,
 }: {
   setView: (view: ViewId) => void;
   rows?: StoreRow[];
   onImportStores?: (file: File | undefined) => void;
   onCreateStore?: () => void;
+  onBulkCreateStores?: (names: string[]) => Promise<{ created: number; skipped: number; failed: number }>;
   importStatus?: string;
 }) {
   const { selectStore } = useStoreRegistry();
@@ -1016,6 +1018,29 @@ function Dashboard({
   const [sortMode, setSortMode] = useState<DashboardSort>("week");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [placeDashboardStores, setPlaceDashboardStores] = useState<DashboardPlaceStore[]>([]);
+  const [bulkStoreOpen, setBulkStoreOpen] = useState(false);
+  const [bulkStoreNames, setBulkStoreNames] = useState("");
+  const [bulkStoreStatus, setBulkStoreStatus] = useState("");
+  const [bulkStoreSaving, setBulkStoreSaving] = useState(false);
+
+  const submitBulkStoreNames = async () => {
+    const names = bulkStoreNames.split(/\r?\n|,/).map((name) => name.trim()).filter(Boolean);
+    if (!names.length || !onBulkCreateStores) {
+      setBulkStoreStatus("업체명을 한 줄에 하나씩 입력하세요.");
+      return;
+    }
+    setBulkStoreSaving(true);
+    setBulkStoreStatus("");
+    try {
+      const result = await onBulkCreateStores(names);
+      setBulkStoreStatus(`${result.created}개 등록 · ${result.skipped}개 중복 제외 · ${result.failed}개 실패`);
+      if (!result.failed) setBulkStoreNames("");
+    } catch (error) {
+      setBulkStoreStatus(error instanceof Error ? error.message : "업체 일괄 등록에 실패했습니다.");
+    } finally {
+      setBulkStoreSaving(false);
+    }
+  };
 
   useEffect(() => {
     let active = true;
@@ -1117,6 +1142,10 @@ function Dashboard({
               <Building2 size={16} />
               업체 추가
             </button>
+            <button className="btn btn-light" onClick={() => setBulkStoreOpen((value) => !value)} type="button">
+              <Building2 size={16} />
+              업체 일괄 추가
+            </button>
             <button className="btn btn-light" onClick={() => setView("questionnaire")} type="button">
               <LinkIcon size={16} />
               정보안내문
@@ -1124,6 +1153,23 @@ function Dashboard({
           </div>
         }
       />
+
+      {bulkStoreOpen && (
+        <section className="panel">
+          <div className="section-headline">
+            <div>
+              <h2>업체명 일괄 등록</h2>
+              <p className="plain-text">한 줄에 하나씩 붙여넣으세요. 매출·네이버·여신금융 데이터는 나중에 매장별로 올릴 수 있습니다.</p>
+            </div>
+            <button className="btn btn-light" onClick={() => setBulkStoreOpen(false)} type="button">닫기</button>
+          </div>
+          <textarea className="store-memo" onChange={(event) => setBulkStoreNames(event.target.value)} placeholder={"예시\n맛똥삼 복대점\n온돌오리구이 하남미사본점"} value={bulkStoreNames} />
+          <div className="store-link-actions">
+            <button className="btn btn-primary" disabled={bulkStoreSaving} onClick={submitBulkStoreNames} type="button">{bulkStoreSaving ? "등록 중" : "업체명 일괄 등록"}</button>
+            {bulkStoreStatus && <span className="plain-text">{bulkStoreStatus}</span>}
+          </div>
+        </section>
+      )}
 
       <div className="filter-row toolbar">
         <div className="field">
@@ -2463,6 +2509,24 @@ function HomePageContent() {
     navigateTo("store");
   };
 
+  const bulkCreateStores = async (names: string[]) => {
+    const response = await fetch("/api/erp/stores/bulk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ names }),
+    });
+    const payload = await response.json() as { created?: unknown[]; skipped?: unknown[]; failed?: unknown[]; error?: string };
+    if (!response.ok) throw new Error(payload.error ?? "업체 일괄 등록 실패");
+    await refreshStores();
+    const result = {
+      created: payload.created?.length ?? 0,
+      skipped: payload.skipped?.length ?? 0,
+      failed: payload.failed?.length ?? 0,
+    };
+    setStoreImportStatus(`${result.created}개 업체 추가, ${result.skipped}개 중복 제외, ${result.failed}개 실패`);
+    return result;
+  };
+
   const importStoresFromExcel = async (file: File | undefined): Promise<BulkStoreImportResult | null> => {
     if (!file) return null;
     const buffer = await file.arrayBuffer();
@@ -2576,7 +2640,7 @@ function HomePageContent() {
       case "weeklyFlow":
         return <WeeklyFlowPage setView={navigateTo} />;
       default:
-        return <Dashboard setView={navigateTo} rows={storeRows} onCreateStore={createStore} onImportStores={importStoresFromExcel} importStatus={storeImportStatus} />;
+        return <Dashboard setView={navigateTo} rows={storeRows} onBulkCreateStores={bulkCreateStores} onCreateStore={createStore} onImportStores={importStoresFromExcel} importStatus={storeImportStatus} />;
     }
   })();
 
