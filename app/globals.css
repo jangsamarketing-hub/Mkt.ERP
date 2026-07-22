@@ -2562,6 +2562,21 @@ a {
   color: #fff;
 }
 
+.inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.inline-actions input {
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  padding: 0 9px;
+}
+
 .setup-label-input {
   min-height: 34px;
   border: 1px solid #dbe4f0;

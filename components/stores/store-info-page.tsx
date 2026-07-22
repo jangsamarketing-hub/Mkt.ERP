@@ -159,20 +159,15 @@ const defaultStoreProfile: StoreProfile = {
   memo: "",
 };
 
-const defaultSetupItems: SetupItem[] = [
-  { id: "cover-photo", label: "대문사진", percent: 70, dueDate: "2026-07-15", completed: false },
-  { id: "cover-video", label: "대문영상", percent: 60, dueDate: "2026-07-15", completed: false },
-  { id: "main-keyword", label: "대표키워드", percent: 45, dueDate: "2026-07-16", completed: false },
-  { id: "description", label: "상세설명", percent: 80, dueDate: "2026-07-17", completed: false },
-  { id: "route-hook", label: "찾아오는길 후킹", percent: 90, dueDate: "2026-07-15", completed: true },
-  { id: "coupon-hook", label: "쿠폰 후킹", percent: 80, dueDate: "2026-07-20", completed: false },
-  { id: "notice-hook", label: "공지사항 후킹", percent: 50, dueDate: "2026-07-18", completed: false },
-  { id: "top-menu", label: "메뉴 상단 3개", percent: 35, dueDate: "2026-07-18", completed: false },
-  { id: "menu-seo-aeo", label: "메뉴 SEO AEO", percent: 25, dueDate: "2026-07-12", completed: false },
-  { id: "set-bait-menu", label: "세트, 미끼메뉴", percent: 30, dueDate: "2026-07-19", completed: false },
-];
+type SetupMonth = {
+  monthStart: string;
+};
 
-const setupMonthOptions = ["26.1월", "26.2월", "26.3월", "26.4월", "26.5월", "26.6월", "26.7월", "26.8월", "26.9월", "26.10월", "26.11월", "26.12월"];
+const formatSetupMonth = (monthStart: string) => {
+  const [year, month] = monthStart.split("-");
+  if (!year || !month) return "관리월 선택";
+  return `${year.slice(2)}.${Number(month)}월`;
+};
 
 const defaultManagers = ["박상일(경기)", "박규상", "강정원", "김재영"];
 const industryOptions = [
@@ -298,8 +293,12 @@ export function StoreInfoPage({
   const [selectedMemoDate, setSelectedMemoDate] = useState("");
   const [managerOptions, setManagerOptions] = useState(defaultManagers);
   const [newManager, setNewManager] = useState("");
-  const [selectedSetupMonth, setSelectedSetupMonth] = useState("26.7월");
-  const [setupItemsByMonth, setSetupItemsByMonth] = useState<Record<string, SetupItem[]>>({ "26.7월": defaultSetupItems });
+  const [setupMonths, setSetupMonths] = useState<SetupMonth[]>([]);
+  const [selectedSetupMonth, setSelectedSetupMonth] = useState("");
+  const [newSetupMonth, setNewSetupMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [setupItemsByMonth, setSetupItemsByMonth] = useState<Record<string, SetupItem[]>>({});
+  const [setupStatus, setSetupStatus] = useState("");
+  const [setupSaving, setSetupSaving] = useState(false);
   const [setupPhotos, setSetupPhotos] = useState<SetupPhoto[]>([]);
   const [setupPhotoTitle, setSetupPhotoTitle] = useState("비포 화면");
   const [channelChecks, setChannelChecks] = useState<ChannelChecks>({
@@ -320,14 +319,13 @@ export function StoreInfoPage({
   const [placeUploadStatus, setPlaceUploadStatus] = useState("");
   const [uploading, setUploading] = useState<"credit" | "place" | null>(null);
   const [selectedWeek, setSelectedWeek] = useState<1 | 2 | 3 | 4>(4);
-  const setupItems = setupItemsByMonth[selectedSetupMonth] ?? defaultSetupItems;
+  const setupItems = setupItemsByMonth[selectedSetupMonth] ?? [];
   const monthlySetupPhotos = setupPhotos.filter((photo) => photo.month === selectedSetupMonth);
   const ownerReportUrl = useMemo(() => `/owner/${profile.placeMid || "store"}`, [profile.placeMid]);
   const informationUrl = useMemo(() => `/information/${profile.placeMid || "store"}`, [profile.placeMid]);
 
   useEffect(() => {
     const savedTasks = window.localStorage.getItem("erp:store-weekly-tasks");
-    const savedSetupItems = window.localStorage.getItem("erp:setup-items-by-month");
     const savedSetupPhotos = window.localStorage.getItem("erp:setup-photos");
     const savedGoldenJobs = window.localStorage.getItem("erp-golden-keyword-jobs");
     const savedRegisteredKeywords = window.localStorage.getItem("erp:registered-golden-keywords");
@@ -337,13 +335,6 @@ export function StoreInfoPage({
         setStoreTasks(JSON.parse(savedTasks) as StoreTaskItem[]);
       } catch {
         window.localStorage.removeItem("erp:store-weekly-tasks");
-      }
-    }
-    if (savedSetupItems) {
-      try {
-        setSetupItemsByMonth(JSON.parse(savedSetupItems) as Record<string, SetupItem[]>);
-      } catch {
-        window.localStorage.removeItem("erp:setup-items-by-month");
       }
     }
     if (savedSetupPhotos) {
@@ -430,8 +421,56 @@ export function StoreInfoPage({
   }, [selectedStoreId, creating]);
 
   useEffect(() => {
-    window.localStorage.setItem("erp:setup-items-by-month", JSON.stringify(setupItemsByMonth));
-  }, [setupItemsByMonth]);
+    if (!selectedStoreId || creating) {
+      setSetupMonths([]);
+      setSelectedSetupMonth("");
+      setSetupItemsByMonth({});
+      return;
+    }
+
+    let cancelled = false;
+    setSetupStatus("");
+    void fetch(`/api/erp/stores/${encodeURIComponent(selectedStoreId)}/setup`)
+      .then(async (response) => {
+        const payload = await response.json() as {
+          months?: { month_start: string }[];
+          items?: {
+            id: string;
+            month_start: string;
+            label: string;
+            progress_percent: number;
+            due_date: string | null;
+            completed: boolean;
+          }[];
+          error?: string;
+        };
+        if (!response.ok) throw new Error(payload.error ?? "월별 세팅 정보를 불러오지 못했습니다.");
+        if (cancelled) return;
+        const months = (payload.months ?? []).map((month) => ({ monthStart: month.month_start.slice(0, 7) }));
+        const itemsByMonth = (payload.items ?? []).reduce<Record<string, SetupItem[]>>((result, item) => {
+          const monthStart = item.month_start.slice(0, 7);
+          result[monthStart] = [
+            ...(result[monthStart] ?? []),
+            {
+              id: item.id,
+              label: item.label,
+              percent: item.progress_percent,
+              dueDate: item.due_date ?? "",
+              completed: item.completed,
+            },
+          ];
+          return result;
+        }, {});
+        setSetupMonths(months);
+        setSetupItemsByMonth(itemsByMonth);
+        setSelectedSetupMonth((current) => (months.some((month) => month.monthStart === current) ? current : (months[months.length - 1]?.monthStart ?? "")));
+      })
+      .catch((error) => {
+        if (!cancelled) setSetupStatus(error instanceof Error ? error.message : "월별 세팅 정보를 불러오지 못했습니다.");
+      });
+
+    return () => { cancelled = true; };
+  }, [selectedStoreId, creating]);
 
   useEffect(() => {
     window.localStorage.setItem("erp:setup-photos", JSON.stringify(setupPhotos));
@@ -668,8 +707,9 @@ export function StoreInfoPage({
   };
 
   const updateSetupItem = (id: string, patch: Partial<SetupItem>) => {
+    if (!selectedSetupMonth) return;
     setSetupItemsByMonth((months) => {
-      const items = months[selectedSetupMonth] ?? defaultSetupItems;
+      const items = months[selectedSetupMonth] ?? [];
       return {
         ...months,
         [selectedSetupMonth]: items.map((item) => (item.id === id ? { ...item, ...patch } : item)),
@@ -678,8 +718,12 @@ export function StoreInfoPage({
   };
 
   const addSetupItem = () => {
+    if (!selectedSetupMonth) {
+      setSetupStatus("먼저 관리월을 생성하거나 선택해주세요.");
+      return;
+    }
     setSetupItemsByMonth((months) => {
-      const items = months[selectedSetupMonth] ?? defaultSetupItems;
+      const items = months[selectedSetupMonth] ?? [];
       return {
         ...months,
         [selectedSetupMonth]: [
@@ -688,7 +732,7 @@ export function StoreInfoPage({
             id: `setup-${Date.now()}`,
             label: "새 세팅 항목",
             percent: 0,
-            dueDate: "2026-07-20",
+            dueDate: "",
             completed: false,
           },
         ],
@@ -698,7 +742,7 @@ export function StoreInfoPage({
 
   const deleteSetupItem = (id: string) => {
     setSetupItemsByMonth((months) => {
-      const items = months[selectedSetupMonth] ?? defaultSetupItems;
+      const items = months[selectedSetupMonth] ?? [];
       return {
         ...months,
         [selectedSetupMonth]: items.filter((item) => item.id !== id),
@@ -708,6 +752,10 @@ export function StoreInfoPage({
 
   const addSetupPhoto = (file: File | undefined) => {
     if (!file) return;
+    if (!selectedSetupMonth) {
+      setSetupStatus("관리월을 만든 뒤 사진을 추가해주세요.");
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       setSetupPhotos((photos) => [
@@ -727,6 +775,102 @@ export function StoreInfoPage({
 
   const deleteSetupPhoto = (id: string) => {
     setSetupPhotos((photos) => photos.filter((photo) => photo.id !== id));
+  };
+
+  const createSetupMonth = async () => {
+    if (!selectedStoreId || creating) {
+      setSetupStatus("매장을 먼저 저장한 뒤 관리월을 만들 수 있습니다.");
+      return;
+    }
+    if (!newSetupMonth) return;
+    setSetupSaving(true);
+    setSetupStatus("");
+    try {
+      const response = await fetch(`/api/erp/stores/${encodeURIComponent(selectedStoreId)}/setup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ monthStart: newSetupMonth }),
+      });
+      const payload = await response.json() as { month?: { month_start: string }; error?: string };
+      if (!response.ok || !payload.month) throw new Error(payload.error ?? "관리월을 만들지 못했습니다.");
+      const monthStart = payload.month.month_start.slice(0, 7);
+      setSetupMonths((current) => Array.from(new Set([...current.map((month) => month.monthStart), monthStart])).sort().map((value) => ({ monthStart: value })));
+      setSetupItemsByMonth((current) => ({ ...current, [monthStart]: current[monthStart] ?? [] }));
+      setSelectedSetupMonth(monthStart);
+      setSetupStatus(`${formatSetupMonth(monthStart)} 관리월을 만들었습니다.`);
+    } catch (error) {
+      setSetupStatus(error instanceof Error ? error.message : "관리월을 만들지 못했습니다.");
+    } finally {
+      setSetupSaving(false);
+    }
+  };
+
+  const saveSetupMonth = async () => {
+    if (!selectedStoreId || !selectedSetupMonth) return;
+    setSetupSaving(true);
+    setSetupStatus("");
+    try {
+      const response = await fetch(`/api/erp/stores/${encodeURIComponent(selectedStoreId)}/setup`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          monthStart: selectedSetupMonth,
+          items: setupItems.map((item) => ({
+            id: item.id,
+            label: item.label,
+            percent: item.percent,
+            dueDate: item.dueDate || null,
+            completed: item.completed,
+          })),
+        }),
+      });
+      const payload = await response.json() as {
+        items?: { id: string; label: string; progress_percent: number; due_date: string | null; completed: boolean }[];
+        error?: string;
+      };
+      if (!response.ok || !payload.items) throw new Error(payload.error ?? "세팅 항목을 저장하지 못했습니다.");
+      setSetupItemsByMonth((current) => ({
+        ...current,
+        [selectedSetupMonth]: payload.items?.map((item) => ({
+          id: item.id,
+          label: item.label,
+          percent: item.progress_percent,
+          dueDate: item.due_date ?? "",
+          completed: item.completed,
+        })) ?? [],
+      }));
+      setSetupStatus(`${formatSetupMonth(selectedSetupMonth)} 세팅 항목을 저장했습니다.`);
+    } catch (error) {
+      setSetupStatus(error instanceof Error ? error.message : "세팅 항목을 저장하지 못했습니다.");
+    } finally {
+      setSetupSaving(false);
+    }
+  };
+
+  const deleteSetupMonth = async () => {
+    if (!selectedStoreId || !selectedSetupMonth) return;
+    if (!window.confirm(`${formatSetupMonth(selectedSetupMonth)}의 세팅 항목을 모두 삭제할까요?`)) return;
+    setSetupSaving(true);
+    setSetupStatus("");
+    try {
+      const response = await fetch(`/api/erp/stores/${encodeURIComponent(selectedStoreId)}/setup?monthStart=${encodeURIComponent(selectedSetupMonth)}`, { method: "DELETE" });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "관리월을 삭제하지 못했습니다.");
+      setSetupMonths((current) => {
+        const next = current.filter((month) => month.monthStart !== selectedSetupMonth);
+        setSelectedSetupMonth(next[next.length - 1]?.monthStart ?? "");
+        return next;
+      });
+      setSetupItemsByMonth((current) => {
+        const { [selectedSetupMonth]: _removed, ...rest } = current;
+        return rest;
+      });
+      setSetupStatus("관리월과 세팅 항목을 삭제했습니다.");
+    } catch (error) {
+      setSetupStatus(error instanceof Error ? error.message : "관리월을 삭제하지 못했습니다.");
+    } finally {
+      setSetupSaving(false);
+    }
   };
 
   const influencerDays = Math.floor((Date.now() - new Date(`${channelChecks.influencerDate}T00:00:00`).getTime()) / 86400000);
@@ -990,18 +1134,25 @@ export function StoreInfoPage({
         <div className="section-headline">
           <div>
             <h2>매장 세팅 상태 체크</h2>
-            <p className="plain-text">월별 세팅 진행률, 수정 마감일, 광고/촬영/먹플루언서 진행 이력을 내부 관리합니다.</p>
+            <p className="plain-text">필요한 관리월만 생성해 세팅 진행률과 수정 마감일을 저장합니다.</p>
           </div>
-          <button className="btn btn-primary" onClick={addSetupItem} type="button">세팅 항목 추가</button>
+          <div className="inline-actions">
+            <input aria-label="새 관리월" onChange={(event) => setNewSetupMonth(event.target.value)} type="month" value={newSetupMonth} />
+            <button className="btn btn-light" disabled={setupSaving || creating || !selectedStoreId} onClick={createSetupMonth} type="button">관리월 생성</button>
+            <button className="btn btn-primary" disabled={setupSaving || !selectedSetupMonth} onClick={saveSetupMonth} type="button">세팅 저장</button>
+            <button className="btn btn-light" disabled={setupSaving || !selectedSetupMonth} onClick={deleteSetupMonth} type="button">관리월 삭제</button>
+          </div>
         </div>
+        {setupStatus && <p className="plain-text">{setupStatus}</p>}
         <div className="month-tabs" aria-label="월별 세팅 체크">
-          {setupMonthOptions.map((month) => (
-            <button className={month === selectedSetupMonth ? "active" : ""} key={month} onClick={() => setSelectedSetupMonth(month)} type="button">
-              {month}
+          {setupMonths.map((month) => (
+            <button className={month.monthStart === selectedSetupMonth ? "active" : ""} key={month.monthStart} onClick={() => setSelectedSetupMonth(month.monthStart)} type="button">
+              {formatSetupMonth(month.monthStart)}
             </button>
           ))}
+          {setupMonths.length === 0 && <p className="plain-text">아직 만든 관리월이 없습니다.</p>}
         </div>
-        <div className="setup-check-grid">
+        {selectedSetupMonth && <div className="setup-check-grid">
           {setupItems.map((item) => (
             <div className={`setup-check-row ${getDueClass(item.dueDate, item.completed)}`} key={item.id}>
               <input
@@ -1023,16 +1174,18 @@ export function StoreInfoPage({
               <button className="btn btn-light" onClick={() => deleteSetupItem(item.id)} type="button">삭제</button>
             </div>
           ))}
-        </div>
-        <div className="setup-photo-upload">
+          <button className="btn btn-light" onClick={addSetupItem} type="button">세팅 항목 추가</button>
+          {setupItems.length === 0 && <p className="plain-text">세팅 항목을 추가한 뒤 저장해주세요.</p>}
+        </div>}
+        {selectedSetupMonth && <div className="setup-photo-upload">
           <div>
-            <h3>{selectedSetupMonth} 비포/수정 히스토리 사진</h3>
+            <h3>{formatSetupMonth(selectedSetupMonth)} 비포/수정 히스토리 사진</h3>
             <p className="plain-text">1주차 비포, 3주차 검수 화면처럼 스크린샷을 날짜 기준으로 쌓아둡니다.</p>
           </div>
           <input value={setupPhotoTitle} onChange={(event) => setSetupPhotoTitle(event.target.value)} placeholder="사진 제목" />
           <input accept="image/*" onChange={(event) => addSetupPhoto(event.target.files?.[0])} type="file" />
-        </div>
-        <div className="setup-photo-grid">
+        </div>}
+        {selectedSetupMonth && <div className="setup-photo-grid">
           {monthlySetupPhotos.map((photo) => (
             <div className="setup-photo-card" key={photo.id}>
               {photo.dataUrl && <img alt={photo.title} src={photo.dataUrl} />}
@@ -1042,7 +1195,7 @@ export function StoreInfoPage({
             </div>
           ))}
           {monthlySetupPhotos.length === 0 && <p className="plain-text">아직 이 월에 등록된 히스토리 사진이 없습니다.</p>}
-        </div>
+        </div>}
         <div className="channel-check-grid">
           {[
             ["naver", "네이버 광고"],
