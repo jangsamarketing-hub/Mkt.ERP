@@ -3204,3 +3204,55 @@ a {
   color: #c2410c;
   font-weight: 800;
 }
+
+.public-store-shell {
+  width: min(880px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 28px 0 48px;
+  color: #102a53;
+}
+
+.public-store-header,
+.public-section-heading,
+.public-task-list > div,
+.public-metric-grid article {
+  border: 1px solid #d9e3f3;
+  background: #fff;
+  border-radius: 16px;
+}
+
+.public-store-header { display: flex; justify-content: space-between; align-items: center; padding: 15px 18px; font-size: 14px; }
+.public-store-header span { color: #2160cf; font-weight: 800; }
+.public-store-hero { padding: 46px 6px 28px; }
+.public-store-hero p { color: #41668e; margin: 0 0 8px; }
+.public-store-hero h1 { font-size: clamp(30px, 7vw, 46px); margin: 0 0 12px; letter-spacing: -0.04em; }
+.public-store-hero span { color: #607899; font-size: 14px; }
+.public-metric-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.public-metric-grid article { padding: 19px; display: grid; gap: 8px; }
+.public-metric-grid span, .public-metric-grid small { color: #607899; font-size: 13px; }
+.public-metric-grid strong { color: #102a53; font-size: 23px; letter-spacing: -0.03em; }
+.public-section { margin-top: 24px; }
+.public-section-heading { padding: 18px; margin-bottom: 10px; }
+.public-section-heading h2 { margin: 0; font-size: 19px; }
+.public-section-heading p { margin: 6px 0 0; color: #607899; font-size: 14px; }
+.public-task-list { display: grid; gap: 8px; }
+.public-task-list > div { display: grid; grid-template-columns: 72px 1fr auto; gap: 12px; align-items: center; padding: 16px; }
+.public-task-list span { color: #18774d; font-size: 13px; font-weight: 800; }
+.public-task-list em { color: #41668e; font-size: 13px; font-style: normal; }
+.public-empty { margin: 0; padding: 28px 16px; border: 1px dashed #c8d7ec; border-radius: 14px; color: #607899; }
+.public-store-footer { color: #7185a1; text-align: center; font-size: 13px; padding: 34px 0 4px; }
+.public-information-form { display: grid; gap: 16px; padding: 22px; border: 1px solid #d9e3f3; border-radius: 18px; background: #fff; }
+.public-form-notice { margin: 0; padding: 13px; border-radius: 12px; background: #f2f7ff; color: #315b91; font-size: 14px; line-height: 1.6; }
+.public-form-field { display: grid; gap: 8px; font-weight: 700; color: #243f68; }
+.public-form-field input, .public-form-field textarea { width: 100%; box-sizing: border-box; border: 1px solid #cbd9ec; border-radius: 10px; padding: 12px; font: inherit; color: #102a53; }
+.public-form-field textarea { min-height: 104px; resize: vertical; }
+.public-submit-button { border: 0; border-radius: 10px; background: #245bd6; color: #fff; padding: 14px; font-weight: 800; font-size: 16px; cursor: pointer; }
+.public-submit-button:disabled { opacity: 0.65; cursor: wait; }
+.public-form-status { margin: 0; color: #18774d; font-size: 14px; line-height: 1.6; }
+
+@media (max-width: 560px) {
+  .public-store-shell { width: min(100% - 24px, 880px); padding-top: 12px; }
+  .public-metric-grid { grid-template-columns: 1fr; }
+  .public-task-list > div { grid-template-columns: 1fr auto; }
+  .public-task-list span { grid-column: 1 / -1; }
+}

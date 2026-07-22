@@ -321,8 +321,15 @@ export function StoreInfoPage({
   const [selectedWeek, setSelectedWeek] = useState<1 | 2 | 3 | 4>(4);
   const setupItems = setupItemsByMonth[selectedSetupMonth] ?? [];
   const monthlySetupPhotos = setupPhotos.filter((photo) => photo.month === selectedSetupMonth);
-  const ownerReportUrl = useMemo(() => `/owner/${profile.placeMid || "store"}`, [profile.placeMid]);
-  const informationUrl = useMemo(() => `/information/${profile.placeMid || "store"}`, [profile.placeMid]);
+  const publicStoreMid = profile.placeMid.trim();
+  const ownerReportUrl = useMemo(
+    () => publicStoreMid ? `/store/${encodeURIComponent(publicStoreMid)}/daylist` : "",
+    [publicStoreMid],
+  );
+  const informationUrl = useMemo(
+    () => publicStoreMid ? `/store/${encodeURIComponent(publicStoreMid)}/info` : "",
+    [publicStoreMid],
+  );
 
   useEffect(() => {
     const savedTasks = window.localStorage.getItem("erp:store-weekly-tasks");
@@ -1041,15 +1048,23 @@ export function StoreInfoPage({
           <h2>플레이스/공유 링크</h2>
           <Field label="플레이스 URL" field="placeUrl" profile={profile} setProfile={setProfile} />
           <Field label="플레이스 MID" field="placeMid" profile={profile} setProfile={setProfile} />
-          <ReadLine label="사장님 보고서" value={ownerReportUrl} />
+          <ReadLine label="사장님 보고서" value={ownerReportUrl || "플레이스 MID를 저장하면 공유 링크가 생성됩니다."} />
           <div className="store-link-actions">
-            <button className="btn btn-light" onClick={() => copyText(ownerReportUrl)} type="button">복사</button>
-            <button className="btn btn-primary" onClick={() => setView("owner")} type="button">바로가기</button>
+            <button className="btn btn-light" disabled={!ownerReportUrl} onClick={() => copyText(ownerReportUrl)} type="button">복사</button>
+            {ownerReportUrl ? (
+              <a className="btn btn-primary" href={ownerReportUrl} rel="noreferrer" target="_blank">새 탭에서 열기</a>
+            ) : (
+              <button className="btn btn-primary" disabled type="button">MID 입력 필요</button>
+            )}
           </div>
-          <ReadLine label="정보안내문" value={informationUrl} />
+          <ReadLine label="정보안내문" value={informationUrl || "플레이스 MID를 저장하면 공유 링크가 생성됩니다."} />
           <div className="store-link-actions">
-            <button className="btn btn-light" onClick={() => copyText(informationUrl)} type="button">복사</button>
-            <button className="btn btn-primary" onClick={() => setView("questionnaire")} type="button">바로가기</button>
+            <button className="btn btn-light" disabled={!informationUrl} onClick={() => copyText(informationUrl)} type="button">복사</button>
+            {informationUrl ? (
+              <a className="btn btn-primary" href={informationUrl} rel="noreferrer" target="_blank">새 탭에서 열기</a>
+            ) : (
+              <button className="btn btn-primary" disabled type="button">MID 입력 필요</button>
+            )}
           </div>
         </div>
 

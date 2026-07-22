@@ -48,5 +48,8 @@ test("boundary allows public login and a valid authenticated session", () => {
   const token = createAdminSessionToken("admin", secret);
   const session = verifySessionToken(token, secret);
   assert.deepEqual(decideRequestAccess("/login", "", null), { action: "allow" });
+  assert.deepEqual(decideRequestAccess("/store/123/daylist", "", null), { action: "allow" });
+  assert.deepEqual(decideRequestAccess("/store/123/info", "", null), { action: "allow" });
+  assert.deepEqual(decideRequestAccess("/api/public/stores/123/information", "", null), { action: "allow" });
   assert.deepEqual(decideRequestAccess("/api/erp/stores", "", session), { action: "allow" });
 });
