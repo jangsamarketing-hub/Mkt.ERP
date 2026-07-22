@@ -76,6 +76,10 @@ type CallHistory = {
 type StoreProfile = {
   clientName: string;
   storeName: string;
+  ownerPhone: string;
+  businessRegistrationNumber: string;
+  specialNotes: string;
+  businessRegistrationStoragePath: string;
   industry: string;
   region: string;
   manager: string;
@@ -111,6 +115,10 @@ type StoreProfile = {
 const defaultStoreProfile: StoreProfile = {
   clientName: "",
   storeName: "",
+  ownerPhone: "",
+  businessRegistrationNumber: "",
+  specialNotes: "",
+  businessRegistrationStoragePath: "",
   industry: "",
   region: "",
   manager: "",
@@ -305,6 +313,9 @@ export function StoreInfoPage({
     influencerHistory: ["2026-05-01"],
   });
   const [savedAt, setSavedAt] = useState("");
+  const [privateProfileStatus, setPrivateProfileStatus] = useState("");
+  const [privateProfileSaving, setPrivateProfileSaving] = useState(false);
+  const [businessRegistrationUploading, setBusinessRegistrationUploading] = useState(false);
   const [creditUploadStatus, setCreditUploadStatus] = useState("");
   const [placeUploadStatus, setPlaceUploadStatus] = useState("");
   const [uploading, setUploading] = useState<"credit" | "place" | null>(null);
@@ -388,6 +399,37 @@ export function StoreInfoPage({
   }, [selectedStoreId, stores]);
 
   useEffect(() => {
+    if (!selectedStoreId || creating) return;
+    let cancelled = false;
+    setPrivateProfileStatus("");
+    void fetch(`/api/erp/stores/${encodeURIComponent(selectedStoreId)}/private-profile`)
+      .then(async (response) => {
+        const payload = await response.json() as {
+          profile?: {
+            owner_phone?: string | null;
+            business_registration_number?: string | null;
+            special_notes?: string | null;
+            business_registration_storage_path?: string | null;
+          } | null;
+          error?: string;
+        };
+        if (!response.ok) throw new Error(payload.error ?? "비공개 매장 정보를 불러오지 못했습니다.");
+        if (cancelled || !payload.profile) return;
+        setProfile((current) => ({
+          ...current,
+          ownerPhone: payload.profile?.owner_phone ?? "",
+          businessRegistrationNumber: payload.profile?.business_registration_number ?? "",
+          specialNotes: payload.profile?.special_notes ?? "",
+          businessRegistrationStoragePath: payload.profile?.business_registration_storage_path ?? "",
+        }));
+      })
+      .catch((error) => {
+        if (!cancelled) setPrivateProfileStatus(error instanceof Error ? error.message : "비공개 매장 정보를 불러오지 못했습니다.");
+      });
+    return () => { cancelled = true; };
+  }, [selectedStoreId, creating]);
+
+  useEffect(() => {
     window.localStorage.setItem("erp:setup-items-by-month", JSON.stringify(setupItemsByMonth));
   }, [setupItemsByMonth]);
 
@@ -416,6 +458,56 @@ export function StoreInfoPage({
   const copyText = async (text: string) => {
     await navigator.clipboard.writeText(new URL(text, window.location.origin).toString());
     setSavedAt("링크 복사 완료");
+  };
+
+  const savePrivateProfile = async () => {
+    if (!selectedStoreId || creating) {
+      setPrivateProfileStatus("먼저 매장 기본정보를 저장해주세요.");
+      return;
+    }
+    setPrivateProfileSaving(true);
+    setPrivateProfileStatus("");
+    try {
+      const response = await fetch(`/api/erp/stores/${encodeURIComponent(selectedStoreId)}/private-profile`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ownerPhone: profile.ownerPhone,
+          businessRegistrationNumber: profile.businessRegistrationNumber,
+          specialNotes: profile.specialNotes,
+        }),
+      });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "비공개 매장 정보 저장에 실패했습니다.");
+      setPrivateProfileStatus("비공개 매장 정보를 저장했습니다.");
+    } catch (error) {
+      setPrivateProfileStatus(error instanceof Error ? error.message : "비공개 매장 정보 저장에 실패했습니다.");
+    } finally {
+      setPrivateProfileSaving(false);
+    }
+  };
+
+  const uploadBusinessRegistration = async (file: File | undefined) => {
+    if (!file) return;
+    if (!selectedStoreId || creating) {
+      setPrivateProfileStatus("먼저 매장 기본정보를 저장해주세요.");
+      return;
+    }
+    setBusinessRegistrationUploading(true);
+    setPrivateProfileStatus("");
+    const form = new FormData();
+    form.set("file", file);
+    try {
+      const response = await fetch(`/api/erp/stores/${encodeURIComponent(selectedStoreId)}/business-registration`, { method: "POST", body: form });
+      const payload = await response.json() as { attachment?: { business_registration_storage_path?: string | null }; error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "사업자등록증 등록에 실패했습니다.");
+      setProfile((current) => ({ ...current, businessRegistrationStoragePath: payload.attachment?.business_registration_storage_path ?? "" }));
+      setPrivateProfileStatus("사업자등록증을 비공개 보관소에 등록했습니다.");
+    } catch (error) {
+      setPrivateProfileStatus(error instanceof Error ? error.message : "사업자등록증 등록에 실패했습니다.");
+    } finally {
+      setBusinessRegistrationUploading(false);
+    }
   };
 
   const uploadStoreFile = async (kind: "credit" | "place", file: File | undefined) => {
@@ -832,6 +924,46 @@ export function StoreInfoPage({
           <Field label="카카오톡 채널" field="kakaoChannelUrl" profile={profile} setProfile={setProfile} />
           <p className="plain-text">외부 서비스 비밀번호와 금융 로그인 정보는 저장하지 않습니다. 매출 파일은 업로드 방식으로 연결합니다.</p>
         </div>
+      </section>
+
+      <section className="panel">
+        <div className="section-headline">
+          <div>
+            <h2>비공개 사장님·사업자 정보</h2>
+            <p className="plain-text">관리자와 담당 직원만 해당 매장에서 확인합니다. 사장님 보고서나 공유 링크에는 노출되지 않습니다.</p>
+          </div>
+          <button className="btn btn-primary" disabled={privateProfileSaving || creating || !selectedStoreId} onClick={savePrivateProfile} type="button">
+            {privateProfileSaving ? "저장 중" : "비공개 정보 저장"}
+          </button>
+        </div>
+        <div className="store-form-grid">
+          <div>
+            <Field label="사장님 연락처" field="ownerPhone" profile={profile} setProfile={setProfile} type="tel" />
+            <Field label="사업자등록번호" field="businessRegistrationNumber" profile={profile} setProfile={setProfile} />
+          </div>
+          <div>
+            <div className="store-field">
+              <span>사업자등록증</span>
+              <span className="store-link-actions">
+                <label className="btn btn-light">
+                  {businessRegistrationUploading ? "등록 중" : "파일 등록"}
+                  <input accept=".pdf,.jpg,.jpeg,.png,.webp" disabled={businessRegistrationUploading || creating || !selectedStoreId} hidden onChange={(event) => uploadBusinessRegistration(event.target.files?.[0])} type="file" />
+                </label>
+                <em className="plain-text">{profile.businessRegistrationStoragePath ? "등록됨" : "PDF·JPG·PNG·WEBP, 최대 10MB"}</em>
+              </span>
+            </div>
+          </div>
+        </div>
+        <label className="mock-field">
+          <span>매장 특이사항</span>
+          <textarea
+            className="store-memo"
+            placeholder="사장님과의 약속, 주의할 점, 매장 운영상 반드시 알아야 할 내용을 적어주세요."
+            value={profile.specialNotes}
+            onChange={(event) => setProfile({ ...profile, specialNotes: event.target.value })}
+          />
+        </label>
+        {privateProfileStatus && <p className="plain-text">{privateProfileStatus}</p>}
       </section>
 
       <section className="panel">
