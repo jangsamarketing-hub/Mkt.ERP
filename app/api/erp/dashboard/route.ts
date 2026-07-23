@@ -51,7 +51,6 @@ export async function GET(request: Request) {
         .from("erp_place_csv_uploads")
         .select("store_id,period_start,period_end,summary,uploaded_at")
         .eq("status", "ready")
-        .eq("is_current", true)
         .gte("period_start", overallStart)
         .lte("period_end", overallEnd),
       supabase
