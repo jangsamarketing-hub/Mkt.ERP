@@ -9,6 +9,24 @@ export const runtime = "nodejs";
 const BUCKET = "erp-private-uploads";
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
+type PlaceUploadResponse = {
+  id: string;
+  store_id: string;
+  file_name: string;
+  period_start: string;
+  period_end: string;
+  summary: unknown;
+  warnings: unknown;
+  status: string;
+  uploaded_at: string;
+  parser_version?: string | null;
+  keywords: unknown[];
+  channels: unknown[];
+  hours: unknown[];
+  weekdays: unknown[];
+  source: "csv" | "json";
+};
+
 function safeFileName(name: string) {
   return name.normalize("NFKC").replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/-+/g, "-");
 }
@@ -35,6 +53,24 @@ function rowValues(row: PlaceMetricRow) {
   };
 }
 
+function numberOrNull(value: unknown) {
+  const numeric = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function jsonSummary(payload: unknown) {
+  const report = payload && typeof payload === "object"
+    ? (payload as { modules?: { report?: { reconciled_metrics?: Record<string, { current?: unknown }>; direct_metrics?: Record<string, { current?: unknown }> } } }).modules?.report
+    : undefined;
+  const metrics = report?.reconciled_metrics ?? report?.direct_metrics ?? {};
+  return {
+    placeInflow: numberOrNull(metrics.placeInflow?.current),
+    reservationOrder: numberOrNull(metrics.reservationOrder?.current),
+    smartCall: numberOrNull(metrics.smartCall?.current),
+    reviewRegister: numberOrNull(metrics.reviewRegister?.current),
+  };
+}
+
 export async function GET(request: Request) {
   const initialAuth = authenticateRequest(request);
   if (!initialAuth.ok) return authFailureResponse(initialAuth);
@@ -53,34 +89,57 @@ export async function GET(request: Request) {
       .select("id,store_id,file_name,period_start,period_end,summary,warnings,status,parser_version,uploaded_at")
       .eq("store_id", storeId)
       .eq("status", "ready")
-      .eq("is_current", true)
       .order("period_start", { ascending: false });
     if (start) query = query.gte("period_start", start);
     if (end) query = query.lte("period_end", end);
 
-    const { data: uploads, error } = await query;
-    if (error) throw error;
-    const uploadIds = (uploads ?? []).map((upload) => upload.id);
-    if (!uploadIds.length) return NextResponse.json({ uploads: [] });
+    let jsonQuery = supabase
+      .from("erp_naver_place_json_imports")
+      .select("id,store_id,file_name,period_start,period_end,raw_storage_path,warnings,status,uploaded_at")
+      .eq("store_id", storeId)
+      .eq("status", "ready")
+      .order("period_start", { ascending: false });
+    if (start) jsonQuery = jsonQuery.gte("period_start", start);
+    if (end) jsonQuery = jsonQuery.lte("period_end", end);
 
-    const [keywordResult, channelResult, timeResult, weekdayResult] = await Promise.all([
-      supabase.from("erp_place_keyword_rows").select("upload_id,keyword,visit_count,previous_count,diff_count,diff_rate,purpose_class").in("upload_id", uploadIds).order("visit_count", { ascending: false }),
-      supabase.from("erp_place_channel_rows").select("upload_id,channel,visit_count,previous_count,diff_count,diff_rate").in("upload_id", uploadIds).order("visit_count", { ascending: false }),
-      supabase.from("erp_place_time_rows").select("upload_id,hour,visit_count,previous_count,diff_count,diff_rate").in("upload_id", uploadIds).order("hour"),
-      supabase.from("erp_place_weekday_rows").select("upload_id,weekday,visit_count,previous_count,diff_count,diff_rate").in("upload_id", uploadIds),
+    const [csvResult, jsonResult] = await Promise.all([query, jsonQuery]);
+    if (csvResult.error) throw csvResult.error;
+    if (jsonResult.error) throw jsonResult.error;
+    const uploads = csvResult.data ?? [];
+    const uploadIds = (uploads ?? []).map((upload) => upload.id);
+
+    const [keywordResult, channelResult, timeResult, weekdayResult, jsonUploads] = await Promise.all([
+      uploadIds.length ? supabase.from("erp_place_keyword_rows").select("upload_id,keyword,visit_count,previous_count,diff_count,diff_rate,purpose_class").in("upload_id", uploadIds).order("visit_count", { ascending: false }) : Promise.resolve({ data: [], error: null }),
+      uploadIds.length ? supabase.from("erp_place_channel_rows").select("upload_id,channel,visit_count,previous_count,diff_count,diff_rate").in("upload_id", uploadIds).order("visit_count", { ascending: false }) : Promise.resolve({ data: [], error: null }),
+      uploadIds.length ? supabase.from("erp_place_time_rows").select("upload_id,hour,visit_count,previous_count,diff_count,diff_rate").in("upload_id", uploadIds).order("hour") : Promise.resolve({ data: [], error: null }),
+      uploadIds.length ? supabase.from("erp_place_weekday_rows").select("upload_id,weekday,visit_count,previous_count,diff_count,diff_rate").in("upload_id", uploadIds) : Promise.resolve({ data: [], error: null }),
+      Promise.all((jsonResult.data ?? []).map(async (upload) => {
+        const download = await supabase.storage.from(BUCKET).download(upload.raw_storage_path);
+        if (download.error || !download.data) return null;
+        try {
+          return { ...upload, summary: jsonSummary(JSON.parse(await download.data.text())), keywords: [], channels: [], hours: [], weekdays: [], source: "json" };
+        } catch {
+          return null;
+        }
+      })),
     ]);
     const childError = keywordResult.error ?? channelResult.error ?? timeResult.error ?? weekdayResult.error;
     if (childError) throw childError;
 
-    return NextResponse.json({
-      uploads: (uploads ?? []).map((upload) => ({
+    const csvUploads: PlaceUploadResponse[] = uploads.map((upload) => ({
         ...upload,
         keywords: (keywordResult.data ?? []).filter((row) => row.upload_id === upload.id),
         channels: (channelResult.data ?? []).filter((row) => row.upload_id === upload.id),
         hours: (timeResult.data ?? []).filter((row) => row.upload_id === upload.id),
         weekdays: (weekdayResult.data ?? []).filter((row) => row.upload_id === upload.id),
-      })),
+        source: "csv",
+      }));
+    const latestByPeriod = new Map<string, PlaceUploadResponse>();
+    csvUploads.forEach((upload) => latestByPeriod.set(`${upload.period_start}:${upload.period_end}`, upload));
+    jsonUploads.filter((upload): upload is NonNullable<typeof upload> => Boolean(upload)).forEach((upload) => {
+      latestByPeriod.set(`${upload.period_start}:${upload.period_end}`, upload as PlaceUploadResponse);
     });
+    return NextResponse.json({ uploads: [...latestByPeriod.values()].sort((left, right) => right.period_start.localeCompare(left.period_start)) });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Place upload query failed" },
