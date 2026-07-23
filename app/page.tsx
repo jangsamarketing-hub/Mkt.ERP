@@ -320,13 +320,18 @@ type ServerPlaceUpload = {
   }>;
 };
 
+type DashboardGranularity = "day" | "week" | "month";
+
 type DashboardPlaceStore = {
   id: string;
   name: string;
   managerName: string | null;
-  weeklyInflow: Array<number | null>;
+  inflowBuckets: Array<number | null>;
+  salesBuckets: Array<number | null>;
   currentInflow: number | null;
   previousInflow: number | null;
+  currentSales: number | null;
+  previousSales: number | null;
 };
 
 type GoldenKeywordJob = {
@@ -488,7 +493,7 @@ function getWeekClass(week: StoreRow["week"]) {
   return "week-badge week-new";
 }
 
-function MiniBars({ values }: { values: number[] }) {
+function MiniBars({ values, labels }: { values: number[]; labels?: string[] }) {
   const max = Math.max(...values, 1);
   return (
     <div className="mini-bars" aria-label="최근 4주 유입량">
@@ -497,7 +502,7 @@ function MiniBars({ values }: { values: number[] }) {
         return (
           <div className="mini-bar-wrap" key={`${value}-${index}`}>
             <div className="mini-bar" style={{ height }} />
-            <span>W{3 - index}</span>
+            <span>{labels?.[index] ?? `W${3 - index}`}</span>
           </div>
         );
       })}
@@ -703,26 +708,66 @@ function parseLooseCsvRows(csvText: string) {
   };
 }
 
-function SalesComboChart({ rows }: { rows: ServerCardData["daily"] }) {
-  const points = rows.slice(-31);
-  const maxSales = Math.max(...points.map((row) => Number(row.net_sales)), 1);
-  const maxCount = Math.max(...points.map((row) => Number(row.net_payment_count)), 1);
+type SalesChartGranularity = "day" | "week" | "month";
+type SalesChartPoint = { key: string; label: string; netSales: number; netPaymentCount: number };
+
+function salesWeekStart(dateText: string) {
+  const date = new Date(`${dateText}T00:00:00Z`);
+  const day = date.getUTCDay();
+  date.setUTCDate(date.getUTCDate() - (day === 0 ? 6 : day - 1));
+  return date.toISOString().slice(0, 10);
+}
+
+function salesSeries(rows: ServerCardData["daily"], granularity: SalesChartGranularity): SalesChartPoint[] {
+  const series = new Map<string, SalesChartPoint>();
+  rows.forEach((row) => {
+    const key = granularity === "day"
+      ? row.transaction_date
+      : granularity === "week"
+        ? salesWeekStart(row.transaction_date)
+        : row.transaction_date.slice(0, 7);
+    const current = series.get(key) ?? {
+      key,
+      label: granularity === "day" ? key.slice(5) : granularity === "week" ? `${key.slice(5)} 주` : key.replace("-", "."),
+      netSales: 0,
+      netPaymentCount: 0,
+    };
+    current.netSales += Number(row.net_sales ?? 0);
+    current.netPaymentCount += Number(row.net_payment_count ?? 0);
+    series.set(key, current);
+  });
+  return [...series.values()].sort((left, right) => left.key.localeCompare(right.key));
+}
+
+function SalesComboChart({ points }: { points: SalesChartPoint[] }) {
+  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
+  const maxSales = Math.max(...points.map((row) => Number(row.netSales)), 1);
+  const maxCount = Math.max(...points.map((row) => Number(row.netPaymentCount)), 1);
 
   if (!points.length) return <p className="plain-text">선택한 기간에 업로드된 매출 데이터가 없습니다.</p>;
 
+  const hovered = points.find((point) => point.key === hoveredKey) ?? null;
+
   return (
     <div className="combo-chart">
-      <div className="combo-chart-grid">
+      {hovered && (
+        <div className="combo-tooltip" role="status">
+          <strong>{hovered.label}</strong>
+          <span>매출 {formatNumber(hovered.netSales)}원</span>
+          <span>결제 {formatNumber(hovered.netPaymentCount)}건</span>
+        </div>
+      )}
+      <div className="combo-chart-grid" style={{ gridTemplateColumns: `repeat(${Math.max(1, Math.min(points.length, 31))}, minmax(18px, 1fr))` }}>
         {points.map((row) => (
-          <div className="combo-day" key={row.transaction_date} title={`${formatNumber(Number(row.net_sales))}원 · ${formatNumber(Number(row.net_payment_count))}건`}>
-            <i style={{ height: `${Math.max(4, (Number(row.net_sales) / maxSales) * 100)}%` }} />
-            <b style={{ bottom: `${Math.max(8, (Number(row.net_payment_count) / maxCount) * 88)}px` }} />
-            <span>{row.transaction_date.slice(5)}</span>
+          <div className="combo-day" key={row.key} onMouseEnter={() => setHoveredKey(row.key)} onMouseLeave={() => setHoveredKey(null)} tabIndex={0} onFocus={() => setHoveredKey(row.key)} onBlur={() => setHoveredKey(null)}>
+            <i style={{ height: `${Math.max(4, (Number(row.netSales) / maxSales) * 100)}%` }} />
+            <b style={{ bottom: `${Math.max(8, (Number(row.netPaymentCount) / maxCount) * 88)}px` }} />
+            <span>{row.label}</span>
           </div>
         ))}
       </div>
       <div className="chart-legend">
-        <span><i className="legend-line" /> 결제수</span>
+        <span><i className="legend-line" /> 결제건수</span>
         <span><i className="legend-bar" /> 총 매출</span>
       </div>
     </div>
@@ -1014,10 +1059,13 @@ function Dashboard({
   const { selectStore } = useStoreRegistry();
   const [selectedDate, setSelectedDate] = useState("2026-07-12");
   const [appliedDate, setAppliedDate] = useState("2026-07-12");
+  const [selectedGranularity, setSelectedGranularity] = useState<DashboardGranularity>("week");
+  const [appliedGranularity, setAppliedGranularity] = useState<DashboardGranularity>("week");
   const [searchTerm, setSearchTerm] = useState("");
   const [sortMode, setSortMode] = useState<DashboardSort>("week");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [placeDashboardStores, setPlaceDashboardStores] = useState<DashboardPlaceStore[]>([]);
+  const [dashboardBucketLabels, setDashboardBucketLabels] = useState<string[]>(["3주 전", "2주 전", "1주 전", "기준주"]);
   const [bulkStoreOpen, setBulkStoreOpen] = useState(false);
   const [bulkStoreNames, setBulkStoreNames] = useState("");
   const [bulkStoreStatus, setBulkStoreStatus] = useState("");
@@ -1044,18 +1092,24 @@ function Dashboard({
 
   useEffect(() => {
     let active = true;
-    fetch(`/api/erp/dashboard?date=${encodeURIComponent(appliedDate)}`)
+    fetch(`/api/erp/dashboard?date=${encodeURIComponent(appliedDate)}&granularity=${appliedGranularity}`)
       .then((response) => response.ok ? response.json() : Promise.reject(new Error("dashboard query failed")))
-      .then((payload: { stores?: DashboardPlaceStore[] }) => {
-        if (active) setPlaceDashboardStores(payload.stores ?? []);
+      .then((payload: { stores?: DashboardPlaceStore[]; buckets?: Array<{ label: string }> }) => {
+        if (active) {
+          setPlaceDashboardStores(payload.stores ?? []);
+          setDashboardBucketLabels(payload.buckets?.map((bucket) => bucket.label) ?? []);
+        }
       })
       .catch(() => {
-        if (active) setPlaceDashboardStores([]);
+        if (active) {
+          setPlaceDashboardStores([]);
+          setDashboardBucketLabels([]);
+        }
       });
     return () => {
       active = false;
     };
-  }, [appliedDate]);
+  }, [appliedDate, appliedGranularity]);
 
   const dashboardSourceRows = useMemo(() => {
     if (!placeDashboardStores.length) return rows;
@@ -1069,13 +1123,13 @@ function Dashboard({
         manager: placeStore.managerName || base?.manager || "미배정",
         bizMoney: base?.bizMoney ?? null,
         naverInflow: placeStore.currentInflow,
-        sales: base?.sales ?? null,
+        sales: placeStore.currentSales,
         previous: {
           bizMoney: base?.previous.bizMoney ?? null,
           naverInflow: placeStore.previousInflow,
-          sales: base?.previous.sales ?? null,
+          sales: placeStore.previousSales,
         },
-        weeklyInflow: placeStore.weeklyInflow.map((value) => value ?? 0),
+        weeklyInflow: placeStore.inflowBuckets.map((value) => value ?? 0),
         weeklyTasks: base?.weeklyTasks ?? [0, 0, 0, 0],
         memo: base?.memo ?? "데이터 연결 대기",
       } satisfies StoreRow;
@@ -1176,10 +1230,17 @@ function Dashboard({
           <label htmlFor="date">기준일</label>
           <input className="date-input" id="date" type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} />
         </div>
-        <button className="btn btn-primary" onClick={() => setAppliedDate(selectedDate)} type="button">
+        <div className="small-tabs" aria-label="대시보드 집계 단위">
+          {(["day", "week", "month"] as DashboardGranularity[]).map((granularity) => (
+            <button className={selectedGranularity === granularity ? "active" : ""} key={granularity} onClick={() => setSelectedGranularity(granularity)} type="button">
+              {granularity === "day" ? "일" : granularity === "week" ? "주" : "월"}
+            </button>
+          ))}
+        </div>
+        <button className="btn btn-primary" onClick={() => { setAppliedDate(selectedDate); setAppliedGranularity(selectedGranularity); }} type="button">
           적용
         </button>
-        <span className="applied-date">적용 기준일 {appliedDate}</span>
+        <span className="applied-date">적용 기준일 {appliedDate} · {appliedGranularity === "day" ? "일" : appliedGranularity === "week" ? "주" : "월"} 단위</span>
         {importStatus && <span className="applied-date">{importStatus}</span>}
         <div className="legend">
           <span>
@@ -1209,7 +1270,7 @@ function Dashboard({
               <th><button className="table-sort" onClick={() => toggleSort("store")} type="button">업체명 {sortArrow("store")}</button></th>
               <th><button className="table-sort" onClick={() => toggleSort("manager")} type="button">담당자 {sortArrow("manager")}</button></th>
               <th><button className="table-sort" onClick={() => toggleSort("bizMoney")} type="button">비즈머니 {sortArrow("bizMoney")}</button></th>
-              <th><button className="table-sort" onClick={() => toggleSort("inflow")} type="button">네이버 유입 / 4주 그래프 {sortArrow("inflow")}</button></th>
+              <th><button className="table-sort" onClick={() => toggleSort("inflow")} type="button">네이버 유입 / 최근 4{appliedGranularity === "day" ? "일" : appliedGranularity === "week" ? "주" : "개월"} {sortArrow("inflow")}</button></th>
               <th><button className="table-sort" onClick={() => toggleSort("sales")} type="button">매출 {sortArrow("sales")}</button></th>
               <th>업무현황</th>
               <th>바로가기</th>
@@ -1244,7 +1305,7 @@ function Dashboard({
                       value={store.naverInflow}
                       onClick={() => openStoreView(store.id, "inflow")}
                     />
-                    <MiniBars values={store.weeklyInflow} />
+                    <MiniBars labels={dashboardBucketLabels} values={store.weeklyInflow} />
                   </div>
                 </td>
                 <td>
@@ -1792,6 +1853,7 @@ function SalesPage() {
   const [salesUploadMessage, setSalesUploadMessage] = useState("");
   const [queryVersion, setQueryVersion] = useState(0);
   const [salesLoading, setSalesLoading] = useState(false);
+  const [salesGranularity, setSalesGranularity] = useState<SalesChartGranularity>("day");
   const [goalMonths, setGoalMonths] = useState(6);
   const [targetSales, setTargetSales] = useState(60000000);
   const [targetTicket, setTargetTicket] = useState(90000);
@@ -1828,6 +1890,11 @@ function SalesPage() {
     } : null;
     return { sales: summarize(sales), tickets: summarize(tickets) };
   }, [cardData]);
+
+  const chartPoints = useMemo(
+    () => salesSeries(cardData?.daily ?? [], salesGranularity),
+    [cardData, salesGranularity],
+  );
 
   const goalPlan = useMemo(() => {
     const currentSales = cardData?.totals.netSales ?? 0;
@@ -1951,12 +2018,14 @@ function SalesPage() {
         <div className="section-headline">
           <h2>날짜별 매출 + 결제수</h2>
           <div className="small-tabs">
-            <button className="active" type="button">일간</button>
-            <button type="button">주간</button>
-            <button type="button">월간</button>
+            {(["day", "week", "month"] as SalesChartGranularity[]).map((granularity) => (
+              <button className={salesGranularity === granularity ? "active" : ""} key={granularity} onClick={() => setSalesGranularity(granularity)} type="button">
+                {granularity === "day" ? "일간" : granularity === "week" ? "주간" : "월간"}
+              </button>
+            ))}
           </div>
         </div>
-        <SalesComboChart rows={cardData?.daily ?? []} />
+        <SalesComboChart points={chartPoints} />
       </section>
       <section className="panel two-col">
         <div>
