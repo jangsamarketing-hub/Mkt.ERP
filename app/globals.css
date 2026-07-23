@@ -1397,6 +1397,34 @@ a {
   color: #fff;
 }
 
+.chart-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 8px 0 14px;
+}
+
+.chart-summary-grid > div {
+  display: grid;
+  gap: 5px;
+  min-height: 72px;
+  padding: 13px 15px;
+  border: 1px solid #dbe4f0;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.chart-summary-grid span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.chart-summary-grid strong {
+  color: #0f2f64;
+  font-size: 16px;
+}
+
 .combo-chart {
   position: relative;
   display: grid;
@@ -3113,6 +3141,10 @@ a {
   .combo-chart-grid {
     grid-template-columns: repeat(15, minmax(18px, 1fr));
     row-gap: 34px;
+  }
+
+  .chart-summary-grid {
+    grid-template-columns: 1fr;
   }
 
   .main {

@@ -789,6 +789,28 @@ function StoreContextBar() {
   );
 }
 
+function ChartSummary({
+  period,
+  primaryLabel,
+  primaryValue,
+  secondaryLabel,
+  secondaryValue,
+}: {
+  period: string;
+  primaryLabel: string;
+  primaryValue: string;
+  secondaryLabel: string;
+  secondaryValue: string;
+}) {
+  return (
+    <div className="chart-summary-grid">
+      <div><span>조회 기간</span><strong>{period}</strong></div>
+      <div><span>{primaryLabel}</span><strong>{primaryValue}</strong></div>
+      <div><span>{secondaryLabel}</span><strong>{secondaryValue}</strong></div>
+    </div>
+  );
+}
+
 function SignalButton({
   label,
   value,
@@ -1384,6 +1406,7 @@ function AdPage() {
 }
 
 function InflowPage() {
+  const today = new Date().toISOString().slice(0, 10);
   const {
     stores: erpStores,
     selectedStoreId: selectedInflowStoreId,
@@ -1391,8 +1414,10 @@ function InflowPage() {
     selectStore: setSelectedInflowStoreId,
   } = useStoreRegistry();
   const [inflowMode, setInflowMode] = useState<"range" | "weekly" | "monthly">("range");
-  const [rangeStart, setRangeStart] = useState("2026-06-01");
-  const [rangeEnd, setRangeEnd] = useState("2026-06-30");
+  const [rangeStart, setRangeStart] = useState("2026-03-01");
+  const [rangeEnd, setRangeEnd] = useState(today);
+  const [appliedRangeStart, setAppliedRangeStart] = useState("2026-03-01");
+  const [appliedRangeEnd, setAppliedRangeEnd] = useState(today);
   const [queryVersion, setQueryVersion] = useState(0);
   const [placeCsvUploads, setPlaceCsvUploads] = useState<ServerPlaceUpload[]>([]);
   const [placeDataStatus, setPlaceDataStatus] = useState("");
@@ -1422,6 +1447,12 @@ function InflowPage() {
     smartCall: summary.smartCall + (upload.summary.smartCall ?? 0),
     reviewRegister: summary.reviewRegister + (upload.summary.reviewRegister ?? 0),
   }), { placeInflow: 0, reservationOrder: 0, smartCall: 0, reviewRegister: 0 }), [selectedUploads]);
+  const inflowTrend = useMemo(() => [...selectedUploads]
+    .sort((left, right) => left.period_start.localeCompare(right.period_start))
+    .map((upload) => ({
+      label: `${upload.period_start.slice(5)}~${upload.period_end.slice(5)}`,
+      value: upload.summary.placeInflow ?? 0,
+    })), [selectedUploads]);
   const displayedKeywords = useMemo(() => {
     const totals = new Map<string, { current: number; previous: number }>();
     selectedUploads.forEach((upload) => upload.keywords.forEach((row) => {
@@ -1457,13 +1488,13 @@ function InflowPage() {
     }
     let active = true;
     setPlaceDataStatus("데이터 조회 중");
-    const params = new URLSearchParams({ storeId: selectedInflowStoreId, start: rangeStart, end: rangeEnd });
+    const params = new URLSearchParams({ storeId: selectedInflowStoreId, start: appliedRangeStart, end: appliedRangeEnd });
     fetch(`/api/erp/place-uploads?${params.toString()}`)
       .then((response) => response.ok ? response.json() : response.json().then((payload) => Promise.reject(new Error(payload.error ?? "query failed"))))
       .then((payload: { uploads?: ServerPlaceUpload[] }) => {
         if (!active) return;
         setPlaceCsvUploads(payload.uploads ?? []);
-        setPlaceDataStatus(payload.uploads?.length ? `${payload.uploads.length}주 데이터 조회 완료` : "선택한 기간에 데이터가 없습니다.");
+        setPlaceDataStatus(payload.uploads?.length ? `${appliedRangeStart}~${appliedRangeEnd} · ${payload.uploads.length}개 원본 데이터 조회 완료` : "선택한 기간에 데이터가 없습니다.");
       })
       .catch((error: Error) => {
         if (!active) return;
@@ -1473,7 +1504,7 @@ function InflowPage() {
     return () => {
       active = false;
     };
-  }, [selectedInflowStoreId, rangeStart, rangeEnd, queryVersion]);
+  }, [selectedInflowStoreId, appliedRangeStart, appliedRangeEnd, queryVersion]);
 
   useEffect(() => {
     try {
@@ -1523,6 +1554,8 @@ function InflowPage() {
       if (!response.ok) throw new Error(payload.error ?? "CSV 업로드에 실패했습니다.");
       setRangeStart((current) => payload.upload?.period_start && payload.upload.period_start < current ? payload.upload.period_start : current);
       setRangeEnd((current) => payload.upload?.period_end && payload.upload.period_end > current ? payload.upload.period_end : current);
+      setAppliedRangeStart((current) => payload.upload?.period_start && payload.upload.period_start < current ? payload.upload.period_start : current);
+      setAppliedRangeEnd((current) => payload.upload?.period_end && payload.upload.period_end > current ? payload.upload.period_end : current);
       setPlaceDataStatus(payload.duplicate ? "이미 업로드된 동일한 주간 CSV입니다." : "CSV 저장 및 분석 완료");
       setQueryVersion((version) => version + 1);
     } catch (error) {
@@ -1545,6 +1578,16 @@ function InflowPage() {
     setInflowMode("monthly");
     setRangeStart(format(start));
     setRangeEnd(format(end));
+  };
+
+  const applyInflowRange = () => {
+    if (rangeStart > rangeEnd) {
+      setPlaceDataStatus("시작일은 종료일보다 앞서야 합니다.");
+      return;
+    }
+    setAppliedRangeStart(rangeStart);
+    setAppliedRangeEnd(rangeEnd);
+    setQueryVersion((version) => version + 1);
   };
 
   const runGoldenKeywordMining = async () => {
@@ -1658,7 +1701,7 @@ function InflowPage() {
       <div className="filter-row toolbar">
         <input className="date-input" type="date" value={rangeStart} onChange={(event) => setRangeStart(event.target.value)} />
         <input className="date-input" type="date" value={rangeEnd} onChange={(event) => setRangeEnd(event.target.value)} />
-        <button className={inflowMode === "range" ? "btn btn-primary" : "btn btn-light"} onClick={() => { setInflowMode("range"); setQueryVersion((version) => version + 1); }} type="button">
+        <button className="btn btn-primary" onClick={applyInflowRange} type="button">
           조회
         </button>
         <button className={inflowMode === "weekly" ? "btn btn-primary" : "btn btn-light"} onClick={selectWeeklyRange} type="button">
@@ -1702,6 +1745,17 @@ function InflowPage() {
       </div>
       {hasPlaceData ? (
         <>
+          <section className="panel">
+            <div className="section-headline"><h2>기간별 네이버 플레이스 유입</h2></div>
+            <ChartSummary
+              period={`${appliedRangeStart} ~ ${appliedRangeEnd}`}
+              primaryLabel="플레이스 유입"
+              primaryValue={`${formatNumber(uploadedSummary.placeInflow)}회`}
+              secondaryLabel="조회 원본"
+              secondaryValue={`${selectedUploads.length}개`}
+            />
+            <BarSet labels={inflowTrend.map((row) => row.label)} values={inflowTrend.map((row) => row.value)} />
+          </section>
           <section className="panel two-col">
             <ScrollableMetricList title="유입 키워드" rows={displayedKeywords} />
             <ScrollableMetricList title="유입 채널" rows={displayedChannels} />
@@ -1840,15 +1894,16 @@ function InflowPage() {
 
 function SalesPage() {
   const now = new Date();
-  const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const {
     stores: erpStores,
     selectedStoreId: selectedSalesStoreId,
     selectedStore: selectedSalesStore,
     selectStore: setSelectedSalesStoreId,
   } = useStoreRegistry();
-  const [rangeStart, setRangeStart] = useState(`${defaultMonth}-01`);
-  const [rangeEnd, setRangeEnd] = useState(new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10));
+  const [rangeStart, setRangeStart] = useState("2026-03-01");
+  const [rangeEnd, setRangeEnd] = useState(now.toISOString().slice(0, 10));
+  const [appliedRangeStart, setAppliedRangeStart] = useState("2026-03-01");
+  const [appliedRangeEnd, setAppliedRangeEnd] = useState(now.toISOString().slice(0, 10));
   const [cardData, setCardData] = useState<ServerCardData | null>(null);
   const [salesUploadMessage, setSalesUploadMessage] = useState("");
   const [queryVersion, setQueryVersion] = useState(0);
@@ -1864,7 +1919,7 @@ function SalesPage() {
       setSalesUploadMessage("");
       return;
     }
-    const params = new URLSearchParams({ storeId: selectedSalesStoreId, start: rangeStart, end: rangeEnd });
+    const params = new URLSearchParams({ storeId: selectedSalesStoreId, start: appliedRangeStart, end: appliedRangeEnd });
     setSalesLoading(true);
     fetch(`/api/erp/card-uploads?${params}`)
       .then(async (response) => {
@@ -1878,7 +1933,17 @@ function SalesPage() {
       })
       .catch((error) => setSalesUploadMessage(error instanceof Error ? error.message : "매출 데이터를 불러오지 못했습니다."))
       .finally(() => setSalesLoading(false));
-  }, [selectedSalesStoreId, rangeStart, rangeEnd, queryVersion]);
+  }, [selectedSalesStoreId, appliedRangeStart, appliedRangeEnd, queryVersion]);
+
+  const applySalesRange = () => {
+    if (rangeStart > rangeEnd) {
+      setSalesUploadMessage("시작일은 종료일보다 앞서야 합니다.");
+      return;
+    }
+    setAppliedRangeStart(rangeStart);
+    setAppliedRangeEnd(rangeEnd);
+    setQueryVersion((version) => version + 1);
+  };
 
   const dailyStats = useMemo(() => {
     const sales = (cardData?.daily ?? []).map((row) => Number(row.net_sales)).filter((value) => value > 0);
@@ -1982,7 +2047,8 @@ function SalesPage() {
         <input className="date-input" type="date" value={rangeStart} onChange={(event) => setRangeStart(event.target.value)} />
         <span>종료일:</span>
         <input className="date-input" type="date" value={rangeEnd} onChange={(event) => setRangeEnd(event.target.value)} />
-        <button className="btn btn-primary" disabled={!selectedSalesStoreId || salesLoading} onClick={() => setQueryVersion((version) => version + 1)} type="button">조회</button>
+        <button className="btn btn-primary" disabled={!selectedSalesStoreId || salesLoading} onClick={applySalesRange} type="button">조회</button>
+        <span className="muted-note">적용 기간 {appliedRangeStart} ~ {appliedRangeEnd}</span>
       </div>
       <div className="detail-grid">
         <MetricCard label="순매출" value={cardData ? `${formatNumber(cardData.totals.netSales)}원` : "데이터 없음"} tone="red" />
@@ -2025,6 +2091,13 @@ function SalesPage() {
             ))}
           </div>
         </div>
+        <ChartSummary
+          period={`${appliedRangeStart} ~ ${appliedRangeEnd}`}
+          primaryLabel="순매출"
+          primaryValue={cardData ? `${formatNumber(cardData.totals.netSales)}원` : "데이터 없음"}
+          secondaryLabel="결제건수"
+          secondaryValue={cardData ? `${formatNumber(cardData.totals.netPaymentCount)}건` : "데이터 없음"}
+        />
         <SalesComboChart points={chartPoints} />
       </section>
       <section className="panel two-col">
