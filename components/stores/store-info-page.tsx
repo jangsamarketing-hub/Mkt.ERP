@@ -277,7 +277,7 @@ export function StoreInfoPage({
   onSaveStore?: (
     storeId: string | null,
     profile: Pick<StoreProfile, "clientName" | "storeName" | "industry" | "region" | "manager" | "startDate" | "contractPeriod" | "placeUrl" | "placeMid" | "memo">,
-  ) => void;
+  ) => Promise<{ ok: boolean; message: string }>;
   onArchiveStore?: (storeId: string) => void;
   stores?: StoreRow[];
   createRequest?: number;
@@ -312,6 +312,7 @@ export function StoreInfoPage({
     influencerHistory: ["2026-05-01"],
   });
   const [savedAt, setSavedAt] = useState("");
+  const [profileSaving, setProfileSaving] = useState(false);
   const [privateProfileStatus, setPrivateProfileStatus] = useState("");
   const [privateProfileSaving, setPrivateProfileSaving] = useState(false);
   const [businessRegistrationUploading, setBusinessRegistrationUploading] = useState(false);
@@ -487,10 +488,27 @@ export function StoreInfoPage({
     window.localStorage.setItem("erp:registered-golden-keywords", JSON.stringify(registeredGoldenKeywords));
   }, [registeredGoldenKeywords]);
 
-  const saveProfile = () => {
+  const saveProfile = async () => {
+    if (profileSaving) return;
+    if (!profile.storeName.trim()) {
+      setSavedAt("업체명을 입력해주세요.");
+      return;
+    }
+    if (!onSaveStore) {
+      setSavedAt("매장 저장 기능을 불러오지 못했습니다.");
+      return;
+    }
+    setProfileSaving(true);
+    setSavedAt("매장 원장 저장 중...");
     window.localStorage.setItem("erp:store-weekly-tasks", JSON.stringify(storeTasks));
-    onSaveStore?.(creating ? null : selectedStoreId, profile);
-    setSavedAt(new Date().toLocaleString("ko-KR"));
+    try {
+      const result = await onSaveStore(creating ? null : selectedStoreId, profile);
+      setSavedAt(result.message);
+    } catch (error) {
+      setSavedAt(error instanceof Error ? error.message : "매장 저장에 실패했습니다.");
+    } finally {
+      setProfileSaving(false);
+    }
   };
 
   const resetProfile = () => {
@@ -905,7 +923,7 @@ export function StoreInfoPage({
           <button className="btn btn-light" onClick={onBack} type="button">뒤로가기</button>
           <button className="btn btn-light" onClick={resetProfile} type="button">신규 매장</button>
           <button className="btn btn-light" disabled={creating || !selectedStoreId} onClick={() => onArchiveStore?.(selectedStoreId)} type="button">보관</button>
-          <button className="btn btn-primary" onClick={saveProfile} type="button">저장</button>
+          <button className="btn btn-primary" disabled={profileSaving} onClick={saveProfile} type="button">{profileSaving ? "저장 중" : "저장"}</button>
         </div>
       </div>
 

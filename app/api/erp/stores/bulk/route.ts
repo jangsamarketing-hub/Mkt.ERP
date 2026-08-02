@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { authenticateRequest, authFailureResponse } from "@/lib/auth/request";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { buildStoreInsert } from "@/lib/stores/registry";
+import { ensureActiveOrganizationId } from "@/lib/stores/organization";
 
 const MAX_STORE_NAMES = 200;
 
@@ -28,15 +29,7 @@ export async function POST(request: Request) {
     if (names.length > MAX_STORE_NAMES) return NextResponse.json({ error: `up to ${MAX_STORE_NAMES} store names are allowed` }, { status: 413 });
 
     const supabase = getSupabaseAdmin();
-    const { data: organization, error: organizationError } = await supabase
-      .from("organizations")
-      .select("id")
-      .eq("status", "active")
-      .order("created_at")
-      .limit(1)
-      .maybeSingle();
-    if (organizationError) throw organizationError;
-    if (!organization) return NextResponse.json({ error: "active organization is required" }, { status: 409 });
+    const organizationId = await ensureActiveOrganizationId(supabase);
 
     const { data: existing, error: existingError } = await supabase.from("erp_stores").select("name");
     if (existingError) throw existingError;
@@ -45,7 +38,7 @@ export async function POST(request: Request) {
     const skipped = names.filter((name) => existingNames.has(normalizeName(name)));
     if (!createNames.length) return NextResponse.json({ created: [], skipped, failed: [] });
 
-    const rows = createNames.map((name) => buildStoreInsert({ name }, organization.id));
+    const rows = createNames.map((name) => buildStoreInsert({ name }, organizationId));
     const { data: created, error: insertError } = await supabase.from("erp_stores").insert(rows).select("id,name");
     if (insertError) throw insertError;
     return NextResponse.json({ created: created ?? [], skipped, failed: [] }, { status: 201 });

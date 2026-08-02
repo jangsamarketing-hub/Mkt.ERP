@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { authenticateRequest, authFailureResponse } from "@/lib/auth/request";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { buildStoreInsert, StoreRecord, StoreValidationError } from "@/lib/stores/registry";
+import { ensureActiveOrganizationId } from "@/lib/stores/organization";
 
 export async function GET(request: Request) {
   const auth = authenticateRequest(request, { roles: ["admin"] });
@@ -32,21 +33,8 @@ export async function POST(request: Request) {
   try {
     const body = await request.json() as StoreRecord;
     const supabase = getSupabaseAdmin();
-    let organizationId = typeof body.organizationId === "string" ? body.organizationId.trim() : "";
-    if (!organizationId) {
-      const { data: organization, error: organizationError } = await supabase
-        .from("organizations")
-        .select("id")
-        .eq("status", "active")
-        .order("created_at")
-        .limit(1)
-        .maybeSingle();
-      if (organizationError) throw organizationError;
-      organizationId = organization?.id ?? "";
-    }
-    if (!organizationId) {
-      return NextResponse.json({ error: "active organization is required" }, { status: 409 });
-    }
+    const requestedOrganizationId = typeof body.organizationId === "string" ? body.organizationId.trim() : "";
+    const organizationId = requestedOrganizationId || await ensureActiveOrganizationId(supabase);
 
     const { data, error } = await supabase
       .from("erp_stores")

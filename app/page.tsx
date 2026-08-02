@@ -2716,32 +2716,40 @@ function HomePageContent() {
       memo: string;
     },
   ) => {
-    const response = await fetch(storeId ? `/api/erp/stores/${encodeURIComponent(storeId)}` : "/api/erp/stores", {
-      method: storeId ? "PATCH" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: profile.storeName,
-        clientName: profile.clientName,
-        managerName: profile.manager,
-        category: profile.industry,
-        region: profile.region,
-        contractStartDate: profile.startDate || null,
-        managementStartDate: profile.startDate || null,
-        contractPeriodWeeks: Number.parseInt(profile.contractPeriod, 10) || 4,
-        naverMid: profile.placeMid,
-        naverPlaceUrl: profile.placeUrl,
-        memo: profile.memo,
-      }),
-    });
-    if (!response.ok) {
-      const payload = await response.json() as { error?: string };
-      setStoreImportStatus(payload.error ?? "매장 저장 실패");
-      return;
+    try {
+      const response = await fetch(storeId ? `/api/erp/stores/${encodeURIComponent(storeId)}` : "/api/erp/stores", {
+        method: storeId ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: profile.storeName,
+          clientName: profile.clientName,
+          managerName: profile.manager,
+          category: profile.industry,
+          region: profile.region,
+          contractStartDate: profile.startDate || null,
+          managementStartDate: profile.startDate || null,
+          contractPeriodWeeks: Number.parseInt(profile.contractPeriod, 10) || 4,
+          naverMid: profile.placeMid,
+          naverPlaceUrl: profile.placeUrl,
+          memo: profile.memo,
+        }),
+      });
+      const payload = await response.json() as { store?: { id?: string }; error?: string };
+      if (!response.ok) {
+        const message = payload.error ?? "매장 저장 실패";
+        setStoreImportStatus(message);
+        return { ok: false, message };
+      }
+      await refreshStores();
+      if (!storeId && payload.store?.id) selectStore(payload.store.id);
+      const message = "매장 원장 저장 완료 · 목록과 업로드 선택기에 추가했습니다.";
+      setStoreImportStatus(message);
+      return { ok: true, message };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "매장 저장에 실패했습니다.";
+      setStoreImportStatus(message);
+      return { ok: false, message };
     }
-    const payload = await response.json() as { store?: { id?: string } };
-    await refreshStores();
-    if (!storeId && payload.store?.id) selectStore(payload.store.id);
-    setStoreImportStatus("매장 원장 저장 완료");
   };
 
   const archiveStoreRow = async (storeId: string) => {
