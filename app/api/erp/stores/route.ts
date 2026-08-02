@@ -29,7 +29,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ stores });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Store query failed" },
+      { error: errorMessage(error, "Store query failed") },
       { status: 503 },
     );
   }
