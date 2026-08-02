@@ -6,6 +6,14 @@ import { ensureActiveOrganizationId } from "@/lib/stores/organization";
 
 const MAX_STORE_NAMES = 200;
 
+function errorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "object" && error !== null && "message" in error && typeof error.message === "string") {
+    return error.message;
+  }
+  return fallback;
+}
+
 function normalizeName(value: string) {
   return value.normalize("NFKC").replace(/\s+/g, " ").trim().toLocaleLowerCase("ko-KR");
 }
@@ -43,6 +51,6 @@ export async function POST(request: Request) {
     if (insertError) throw insertError;
     return NextResponse.json({ created: created ?? [], skipped, failed: [] }, { status: 201 });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Bulk store creation failed" }, { status: 500 });
+    return NextResponse.json({ error: errorMessage(error, "업체 일괄 등록에 실패했습니다.") }, { status: 500 });
   }
 }

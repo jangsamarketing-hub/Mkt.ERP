@@ -4,6 +4,14 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { buildStoreInsert, StoreRecord, StoreValidationError } from "@/lib/stores/registry";
 import { ensureActiveOrganizationId } from "@/lib/stores/organization";
 
+function errorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "object" && error !== null && "message" in error && typeof error.message === "string") {
+    return error.message;
+  }
+  return fallback;
+}
+
 export async function GET(request: Request) {
   const auth = authenticateRequest(request, { roles: ["admin"] });
   if (!auth.ok) return authFailureResponse(auth);
@@ -46,7 +54,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ store: data }, { status: 201 });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Store creation failed" },
+      { error: errorMessage(error, "매장 등록에 실패했습니다.") },
       { status: error instanceof StoreValidationError ? 400 : 500 },
     );
   }
