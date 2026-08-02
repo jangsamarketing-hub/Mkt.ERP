@@ -12,6 +12,52 @@ function safeFileName(name: string) {
   return name.normalize("NFKC").replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/-+/g, "-");
 }
 
+type JsonRecord = Record<string, unknown>;
+
+function asRecord(value: unknown): JsonRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as JsonRecord
+    : {};
+}
+
+function dateValue(record: JsonRecord, keys: string[]) {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  }
+  return null;
+}
+
+function readPeriod(payload: JsonRecord, fileName: string) {
+  const coverage = asRecord(payload.coverage);
+  const candidates = [
+    asRecord(payload.period),
+    coverage,
+    asRecord(asRecord(coverage.report).sourcePeriod),
+    asRecord(asRecord(payload.meta).period),
+  ];
+
+  for (const candidate of candidates) {
+    const start = dateValue(candidate, ["start_date", "startDate", "period_start", "from"]);
+    const end = dateValue(candidate, ["end_date", "endDate", "period_end", "to"]);
+    if (start && end) {
+      return {
+        start,
+        end,
+        periodType: typeof candidate.period_type === "string"
+          ? candidate.period_type
+          : typeof candidate.periodType === "string" ? candidate.periodType : null,
+        inferredFromFileName: false,
+      };
+    }
+  }
+
+  const filePeriod = fileName.match(/(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})/);
+  return filePeriod
+    ? { start: filePeriod[1], end: filePeriod[2], periodType: null, inferredFromFileName: true }
+    : null;
+}
+
 export async function POST(request: Request) {
   const initialAuth = authenticateRequest(request);
   if (!initialAuth.ok) return authFailureResponse(initialAuth);
@@ -27,13 +73,14 @@ export async function POST(request: Request) {
 
     const bytes = Buffer.from(await file.arrayBuffer());
     const sourceHash = createHash("sha256").update(bytes).digest("hex");
-    const payload = JSON.parse(bytes.toString("utf8")) as Record<string, unknown>;
-    const store = typeof payload.store === "object" && payload.store !== null ? payload.store as Record<string, unknown> : {};
-    const period = typeof payload.period === "object" && payload.period !== null ? payload.period as Record<string, unknown> : {};
-    const coverage = typeof payload.coverage === "object" && payload.coverage !== null ? payload.coverage : {};
-    const quality = typeof payload.quality === "object" && payload.quality !== null ? payload.quality : {};
-    const periodStart = typeof period.start_date === "string" ? period.start_date : null;
-    const periodEnd = typeof period.end_date === "string" ? period.end_date : null;
+    const payload = JSON.parse(bytes.toString("utf8").replace(/^\uFEFF/, "")) as JsonRecord;
+    const store = asRecord(payload.store);
+    const period = asRecord(payload.period);
+    const coverage = asRecord(payload.coverage);
+    const quality = asRecord(payload.quality);
+    const importedPeriod = readPeriod(payload, file.name);
+    const periodStart = importedPeriod?.start ?? null;
+    const periodEnd = importedPeriod?.end ?? null;
     if (!periodStart || !periodEnd) return NextResponse.json({ error: "Naver JSON 기간(start_date, end_date)이 필요합니다." }, { status: 422 });
 
     const supabase = getSupabaseAdmin();
@@ -44,6 +91,7 @@ export async function POST(request: Request) {
 
     const sourceStoreName = typeof store.store_name === "string" ? store.store_name : null;
     const warnings: string[] = [];
+    if (importedPeriod?.inferredFromFileName) warnings.push("기간을 파일명에서 인식했습니다. 원본 데이터의 기간을 확인해 주세요.");
     if (sourceStoreName && sourceStoreName !== selectedStore.name) warnings.push("파일의 매장명과 선택한 매장명이 다릅니다. 관리자가 확인하세요.");
     const path = `${storeId}/naver-place-json/${periodStart}_${periodEnd}/${Date.now()}-${safeFileName(file.name)}`;
     const { error: storageError } = await supabase.storage.from(BUCKET).upload(path, bytes, { contentType: "application/json", upsert: false });
@@ -52,7 +100,7 @@ export async function POST(request: Request) {
       store_id: storeId, file_name: file.name, source_hash: sourceHash, raw_storage_path: path,
       schema_version: typeof payload.schema_version === "string" ? payload.schema_version : null,
       source_store_name: sourceStoreName, period_start: periodStart, period_end: periodEnd,
-      period_type: typeof period.period_type === "string" ? period.period_type : null,
+      period_type: importedPeriod?.periodType ?? (typeof period.period_type === "string" ? period.period_type : null),
       module_coverage: coverage, quality, warnings, status: "ready",
     }).select("id,file_name,period_start,period_end,status,warnings,uploaded_at").single();
     if (insertError) throw insertError;
