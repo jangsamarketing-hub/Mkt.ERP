@@ -15,7 +15,10 @@ export async function POST(request: Request) {
   const username = typeof body.username === "string" ? body.username.trim() : "";
   const password = typeof body.password === "string" ? body.password : "";
   const configuredUsername = process.env.ERP_ADMIN_USERNAME?.trim();
-  const configuredPasswordHash = process.env.ERP_ADMIN_PASSWORD_HASH;
+  const encodedPasswordHash = process.env.ERP_ADMIN_PASSWORD_HASH_BASE64?.trim();
+  const configuredPasswordHash = encodedPasswordHash
+    ? Buffer.from(encodedPasswordHash, "base64").toString("utf8")
+    : process.env.ERP_ADMIN_PASSWORD_HASH;
   const sessionSecret = readSessionSecret();
 
   if (!configuredUsername || !configuredPasswordHash || !sessionSecret) {
