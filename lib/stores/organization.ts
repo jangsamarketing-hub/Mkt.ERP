@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 const DEFAULT_ORGANIZATION = {
-  name: "맞춤장사 OS",
+  name: "장사ERP",
   slug: "custom-business-os",
 };
 

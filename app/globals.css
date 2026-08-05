@@ -95,11 +95,12 @@ a {
 
 .brand-mark {
   display: grid;
-  width: 34px;
+  width: 44px;
   height: 34px;
   place-items: center;
   border: 2px solid #1e3a8a;
   color: #1e3a8a;
+  font-size: 14px;
   font-weight: 800;
 }
 

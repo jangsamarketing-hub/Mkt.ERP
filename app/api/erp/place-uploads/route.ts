@@ -71,6 +71,36 @@ function jsonSummary(payload: unknown) {
   };
 }
 
+type JsonMetricRow = {
+  keyword?: unknown;
+  channel?: unknown;
+  label?: unknown;
+  pv?: unknown;
+  previous?: unknown;
+  diff?: unknown;
+  rate?: unknown;
+};
+
+function jsonPlaceRows(payload: unknown, kind: "keyword" | "channel") {
+  const place = payload && typeof payload === "object"
+    ? (payload as { modules?: { place?: { keywords?: JsonMetricRow[]; channels?: JsonMetricRow[] } } }).modules?.place
+    : undefined;
+  const rows = kind === "keyword" ? place?.keywords : place?.channels;
+  if (!Array.isArray(rows)) return [];
+  return rows.flatMap((row) => {
+    const label = String(kind === "keyword" ? row.keyword ?? row.label ?? "" : row.channel ?? row.label ?? "").trim();
+    const count = numberOrNull(row.pv);
+    if (!label || count === null) return [];
+    return [{
+      [kind === "keyword" ? "keyword" : "channel"]: label,
+      visit_count: count,
+      previous_count: numberOrNull(row.previous),
+      diff_count: numberOrNull(row.diff),
+      diff_rate: numberOrNull(row.rate),
+    }];
+  });
+}
+
 export async function GET(request: Request) {
   const initialAuth = authenticateRequest(request);
   if (!initialAuth.ok) return authFailureResponse(initialAuth);
@@ -117,7 +147,16 @@ export async function GET(request: Request) {
         const download = await supabase.storage.from(BUCKET).download(upload.raw_storage_path);
         if (download.error || !download.data) return null;
         try {
-          return { ...upload, summary: jsonSummary(JSON.parse(await download.data.text())), keywords: [], channels: [], hours: [], weekdays: [], source: "json" };
+          const payload = JSON.parse(await download.data.text());
+          return {
+            ...upload,
+            summary: jsonSummary(payload),
+            keywords: jsonPlaceRows(payload, "keyword"),
+            channels: jsonPlaceRows(payload, "channel"),
+            hours: [],
+            weekdays: [],
+            source: "json",
+          };
         } catch {
           return null;
         }

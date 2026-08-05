@@ -76,7 +76,6 @@ function cancellationKey(transaction: Pick<ParsedCreditTransaction, "approvalNum
 
 export function buildCreditTransactionUid(
   storeId: string,
-  sourceHash: string,
   transaction: ParsedCreditTransaction,
 ) {
   return createHash("sha256").update([
@@ -87,8 +86,9 @@ export function buildCreditTransactionUid(
     transaction.approvalNumber,
     transaction.amountAbs,
     transaction.cardIssuer,
-    sourceHash,
-    transaction.sourceRowNumber,
+    transaction.affiliateName ?? "",
+    transaction.maskedCardDisplay ?? "",
+    transaction.installment ?? "",
   ].join("|"), "utf8").digest("hex");
 }
 

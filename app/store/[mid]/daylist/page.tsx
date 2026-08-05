@@ -34,7 +34,7 @@ export default async function PublicDaylistPage({ params }: PageProps) {
 
   return (
     <main className="public-store-shell">
-      <header className="public-store-header"><span>맞춤장사 OS</span><strong>매장 진행 리포트</strong></header>
+      <header className="public-store-header"><span>장사ERP</span><strong>매장 진행 리포트</strong></header>
       <section className="public-store-hero">
         <p>{store.category ?? "음식점"}{store.region ? ` · ${store.region}` : ""}</p>
         <h1>{store.name}</h1>
@@ -50,7 +50,7 @@ export default async function PublicDaylistPage({ params }: PageProps) {
         <div className="public-section-heading"><h2>관리 진행 현황</h2><p>우리 팀이 진행 중인 항목입니다.</p></div>
         {setupCount ? <div className="public-task-list">{(setupResult.data ?? []).map((item) => <div key={item.label}><span>{item.completed ? "완료" : "진행 중"}</span><strong>{item.label}</strong><em>{item.completed ? "완료" : `${item.progress_percent}%`}</em></div>)}</div> : <p className="public-empty">아직 공개할 관리 항목이 준비되지 않았습니다.</p>}
       </section>
-      <footer className="public-store-footer">맞춤장사 OS · 매장 맞춤 성장 구조를 함께 만듭니다.</footer>
+      <footer className="public-store-footer">장사ERP · 매장 맞춤 성장 구조를 함께 만듭니다.</footer>
     </main>
   );
 }

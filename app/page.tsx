@@ -856,7 +856,7 @@ function Sidebar({ activeView, setView }: { activeView: ViewId; setView: (view: 
   return (
     <aside className="sidebar">
       <div className="brand">
-        <div className="brand-mark">온</div>
+        <div className="brand-mark">장사</div>
         <strong>ERP</strong>
       </div>
       <nav className="clean-nav">
@@ -1673,7 +1673,7 @@ function InflowPage() {
     <>
       <PageHeader
         title="네이버 유입 통계 및 키워드 분석"
-        description="플레이스 CSV 업로드 후 기간별 유입 키워드, 유입 채널, 증감 데이터를 확인합니다."
+        description="플레이스 JSON 또는 CSV 업로드 후 기간별 유입 키워드, 유입 채널, 증감 데이터를 확인합니다."
         actions={
           <button className="btn btn-light" type="button">
             <Download size={16} />
@@ -1714,8 +1714,8 @@ function InflowPage() {
       </div>
       <section className="panel csv-upload-panel">
         <div>
-          <h2>네이버 플레이스 CSV 주간 업로드</h2>
-          <p className="plain-text">원본 파일과 분석 결과를 매장·주차별로 서버에 누적합니다. 같은 기간을 다시 올리면 이전 버전도 보존합니다.</p>
+          <h2>네이버 플레이스 원본 데이터</h2>
+          <p className="plain-text">JSON과 CSV 원본을 매장·기간별로 보관합니다. 같은 기간의 중복 원본은 합산하지 않고 최신 원본을 기준으로 표시합니다.</p>
         </div>
         <div className="csv-upload-controls">
           <label className={selectedInflowStore ? "file-upload-button" : "file-upload-button disabled"}>
@@ -1732,7 +1732,7 @@ function InflowPage() {
           {selectedUploads.slice(0, 4).map((upload) => (
             <span key={upload.id}>{upload.period_start}~{upload.period_end} · {upload.file_name}</span>
           ))}
-          {selectedInflowStore && selectedUploads.length === 0 && <span>아직 업로드된 CSV가 없습니다.</span>}
+          {selectedInflowStore && selectedUploads.length === 0 && <span>아직 업로드된 JSON 또는 CSV가 없습니다.</span>}
           {!selectedInflowStore && <span>먼저 매장을 선택하세요.</span>}
         </div>
         {placeDataStatus && <p className="plain-text">{placeDataStatus}</p>}

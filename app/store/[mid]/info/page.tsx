@@ -10,7 +10,7 @@ export default async function PublicInformationPage({ params }: PageProps) {
   if (!store) notFound();
   return (
     <main className="public-store-shell public-info-shell">
-      <header className="public-store-header"><span>맞춤장사 OS</span><strong>정보안내문</strong></header>
+      <header className="public-store-header"><span>장사ERP</span><strong>정보안내문</strong></header>
       <section className="public-store-hero">
         <p>마케팅 시작 전 사전 정보 수집</p>
         <h1>{store.name}</h1>

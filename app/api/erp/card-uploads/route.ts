@@ -192,7 +192,7 @@ export async function POST(request: Request) {
 
     const uidsByRow = new Map<number, string>();
     for (const transaction of parsed.transactions) {
-      uidsByRow.set(transaction.sourceRowNumber, buildCreditTransactionUid(storeId, sourceHash, transaction));
+      uidsByRow.set(transaction.sourceRowNumber, buildCreditTransactionUid(storeId, transaction));
     }
     const records = parsed.transactions.map((transaction) => ({
       import_id: importId,
@@ -219,7 +219,9 @@ export async function POST(request: Request) {
     }));
 
     for (let index = 0; index < records.length; index += INSERT_BATCH_SIZE) {
-      const { error } = await supabase.from("erp_card_transactions").insert(records.slice(index, index + INSERT_BATCH_SIZE));
+      const { error } = await supabase
+        .from("erp_card_transactions")
+        .upsert(records.slice(index, index + INSERT_BATCH_SIZE), { onConflict: "transaction_uid", ignoreDuplicates: true });
       if (error) throw error;
     }
 
