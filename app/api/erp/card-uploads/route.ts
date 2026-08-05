@@ -22,6 +22,12 @@ function monthPath(date: string) {
   return date.slice(0, 7);
 }
 
+function workbookContentType(fileName: string) {
+  return /\.xlsx$/i.test(fileName)
+    ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    : "application/vnd.ms-excel";
+}
+
 export async function GET(request: Request) {
   const initialAuth = authenticateRequest(request);
   if (!initialAuth.ok) return authFailureResponse(initialAuth);
@@ -152,7 +158,10 @@ export async function POST(request: Request) {
 
     const storagePath = `${storeId}/credit-finance/${monthPath(parsed.periodStart)}/${Date.now()}-${safeFileName(file.name)}`;
     const { error: storageError } = await supabase.storage.from(BUCKET).upload(storagePath, bytes, {
-      contentType: file.type || "application/vnd.ms-excel",
+      // Windows browsers often report legacy .xls files as application/octet-stream.
+      // The private bucket only permits the explicit Excel MIME types, so trust the
+      // already-validated extension rather than the browser-provided MIME value.
+      contentType: workbookContentType(file.name),
       upsert: false,
     });
     if (storageError) throw storageError;
