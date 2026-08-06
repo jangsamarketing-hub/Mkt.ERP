@@ -24,6 +24,7 @@ export type CanonicalStore = {
   contractPeriodWeeks: number;
   managementStartDate: string | null;
   naverMid: string | null;
+  publicUid: string | null;
   naverPlaceUrl: string | null;
   memo: string | null;
   lifecycleStatus: StoreLifecycleStatus;
@@ -89,6 +90,7 @@ export function toCanonicalStore(record: StoreRecord): CanonicalStore {
     contractPeriodWeeks: Number(record.contract_period_weeks ?? 4),
     managementStartDate: optionalText(record.management_start_date ?? record.contract_start_date) ?? null,
     naverMid: optionalText(record.naver_mid) ?? null,
+    publicUid: optionalText(record.public_uid) ?? null,
     naverPlaceUrl: optionalText(record.naver_place_url) ?? null,
     memo: optionalText(record.memo) ?? null,
     lifecycleStatus: (optionalText(record.lifecycle_status) ?? "active") as StoreLifecycleStatus,

@@ -51,6 +51,7 @@ type StoreRow = {
   manager: string;
   week: string;
   memo: string;
+  publicUid?: string | null;
 };
 
 type GoldenKeywordJob = {
@@ -277,7 +278,7 @@ export function StoreInfoPage({
   onSaveStore?: (
     storeId: string | null,
     profile: Pick<StoreProfile, "clientName" | "storeName" | "industry" | "region" | "manager" | "startDate" | "contractPeriod" | "placeUrl" | "placeMid" | "memo">,
-  ) => Promise<{ ok: boolean; message: string }>;
+  ) => Promise<{ ok: boolean; message: string; storeId?: string }>;
   onArchiveStore?: (storeId: string) => void;
   stores?: StoreRow[];
   createRequest?: number;
@@ -322,14 +323,14 @@ export function StoreInfoPage({
   const [selectedWeek, setSelectedWeek] = useState<1 | 2 | 3 | 4>(4);
   const setupItems = setupItemsByMonth[selectedSetupMonth] ?? [];
   const monthlySetupPhotos = setupPhotos.filter((photo) => photo.month === selectedSetupMonth);
-  const publicStoreMid = profile.placeMid.trim();
+  const publicStoreUid = stores?.find((store) => store.id === selectedStoreId)?.publicUid?.trim() ?? "";
   const ownerReportUrl = useMemo(
-    () => publicStoreMid ? `/store/${encodeURIComponent(publicStoreMid)}/daylist` : "",
-    [publicStoreMid],
+    () => publicStoreUid ? `/store/${encodeURIComponent(publicStoreUid)}/report` : "",
+    [publicStoreUid],
   );
   const informationUrl = useMemo(
-    () => publicStoreMid ? `/store/${encodeURIComponent(publicStoreMid)}/info` : "",
-    [publicStoreMid],
+    () => publicStoreUid ? `/store/${encodeURIComponent(publicStoreUid)}/info` : "",
+    [publicStoreUid],
   );
 
   useEffect(() => {
@@ -429,6 +430,20 @@ export function StoreInfoPage({
   }, [selectedStoreId, creating]);
 
   useEffect(() => {
+    if (!selectedStoreId || creating) return;
+    let cancelled = false;
+    void fetch(`/api/erp/stores/${encodeURIComponent(selectedStoreId)}/external-identifiers`)
+      .then(async (response) => {
+        const payload = await response.json() as { identifiers?: { identifier_type: string; identifier_value: string; is_primary: boolean }[]; error?: string };
+        if (!response.ok) throw new Error(payload.error ?? "외부 식별자를 불러오지 못했습니다.");
+        const customerId = payload.identifiers?.find((item) => item.identifier_type === "naver_searchad_customer_id" && item.is_primary)?.identifier_value ?? "";
+        if (!cancelled) setProfile((current) => ({ ...current, naverCustomerId: customerId }));
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [selectedStoreId, creating]);
+
+  useEffect(() => {
     if (!selectedStoreId || creating) {
       setSetupMonths([]);
       setSelectedSetupMonth("");
@@ -503,6 +518,21 @@ export function StoreInfoPage({
     window.localStorage.setItem("erp:store-weekly-tasks", JSON.stringify(storeTasks));
     try {
       const result = await onSaveStore(creating ? null : selectedStoreId, profile);
+      const savedStoreId = result.storeId ?? selectedStoreId;
+      if (result.ok && savedStoreId && profile.naverCustomerId.trim()) {
+        const identifierResponse = await fetch(`/api/erp/stores/${encodeURIComponent(savedStoreId)}/external-identifiers`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            identifierType: "naver_searchad_customer_id",
+            identifierValue: profile.naverCustomerId.trim(),
+            label: "Naver SearchAd Customer ID",
+            isPrimary: true,
+          }),
+        });
+        const identifierPayload = await identifierResponse.json() as { error?: string };
+        if (!identifierResponse.ok) throw new Error(identifierPayload.error ?? "검색광고 Customer ID 저장에 실패했습니다.");
+      }
       setSavedAt(result.message);
     } catch (error) {
       setSavedAt(error instanceof Error ? error.message : "매장 저장에 실패했습니다.");
@@ -1066,22 +1096,22 @@ export function StoreInfoPage({
           <h2>플레이스/공유 링크</h2>
           <Field label="플레이스 URL" field="placeUrl" profile={profile} setProfile={setProfile} />
           <Field label="플레이스 MID" field="placeMid" profile={profile} setProfile={setProfile} />
-          <ReadLine label="사장님 보고서" value={ownerReportUrl || "플레이스 MID를 저장하면 공유 링크가 생성됩니다."} />
+          <ReadLine label="사장님 보고서" value={ownerReportUrl || "매장을 먼저 저장하면 공유 링크가 생성됩니다."} />
           <div className="store-link-actions">
             <button className="btn btn-light" disabled={!ownerReportUrl} onClick={() => copyText(ownerReportUrl)} type="button">복사</button>
             {ownerReportUrl ? (
               <a className="btn btn-primary" href={ownerReportUrl} rel="noreferrer" target="_blank">새 탭에서 열기</a>
             ) : (
-              <button className="btn btn-primary" disabled type="button">MID 입력 필요</button>
+              <button className="btn btn-primary" disabled type="button">매장 저장 필요</button>
             )}
           </div>
-          <ReadLine label="정보안내문" value={informationUrl || "플레이스 MID를 저장하면 공유 링크가 생성됩니다."} />
+          <ReadLine label="정보안내문" value={informationUrl || "매장을 먼저 저장하면 공유 링크가 생성됩니다."} />
           <div className="store-link-actions">
             <button className="btn btn-light" disabled={!informationUrl} onClick={() => copyText(informationUrl)} type="button">복사</button>
             {informationUrl ? (
               <a className="btn btn-primary" href={informationUrl} rel="noreferrer" target="_blank">새 탭에서 열기</a>
             ) : (
-              <button className="btn btn-primary" disabled type="button">MID 입력 필요</button>
+              <button className="btn btn-primary" disabled type="button">매장 저장 필요</button>
             )}
           </div>
         </div>

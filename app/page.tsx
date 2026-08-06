@@ -45,6 +45,7 @@ type StoreRow = {
   weeklyInflow: number[];
   weeklyTasks: [number, number, number, number];
   memo: string;
+  publicUid?: string | null;
 };
 
 type BulkStoreImportResult = {
@@ -1368,37 +1369,110 @@ function Dashboard({
 }
 
 function AdPage() {
+  const { selectedStoreId, selectedStore } = useStoreRegistry();
+  const [data, setData] = useState<{
+    config: { enabled: boolean; daily_sync_times: string[]; timezone: string };
+    latestSnapshot: { captured_at: string; biz_money_balance: number | null; balance_status: string; campaign_count: number; active_campaign_count: number } | null;
+    totals: { impressions: number; clicks: number; spend: number; ctr: number | null; averageCpc: number | null; averageRank: number | null; conversions: number };
+    campaigns: { campaign_id: string; campaign_name: string | null; campaign_status: string | null; daily_budget: number | null; impressions: number; clicks: number; ad_spend: number; average_cpc: number | null; average_rank: number | null }[];
+    runs: { status: string; requested_for_date: string | null; finished_at: string | null; error_message: string | null }[];
+  } | null>(null);
+  const [status, setStatus] = useState("");
+  const [syncing, setSyncing] = useState(false);
+  const [savingConfig, setSavingConfig] = useState(false);
+  const [dailyTimes, setDailyTimes] = useState("06:10");
+
+  const load = async () => {
+    if (!selectedStoreId) return;
+    setStatus("검색광고 데이터를 불러오는 중입니다.");
+    try {
+      const response = await fetch(`/api/erp/searchad?storeId=${encodeURIComponent(selectedStoreId)}`);
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "검색광고 데이터를 불러오지 못했습니다.");
+      setData(payload);
+      setDailyTimes((payload.config?.daily_sync_times ?? ["06:10:00"]).map((time: string) => time.slice(0, 5)).join(", "));
+      setStatus(payload.campaigns?.length ? "저장된 읽기 전용 성과 데이터입니다." : "Customer ID 연결 후 수동 갱신 또는 다음 자동 수집에서 데이터가 표시됩니다.");
+    } catch (error) {
+      setData(null);
+      setStatus(error instanceof Error ? error.message : "검색광고 데이터를 불러오지 못했습니다.");
+    }
+  };
+
+  useEffect(() => { void load(); }, [selectedStoreId]);
+
+  const saveConfig = async () => {
+    if (!selectedStoreId) return;
+    const times = dailyTimes.split(",").map((time) => time.trim()).filter(Boolean);
+    setSavingConfig(true);
+    try {
+      const response = await fetch("/api/erp/searchad/config", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ storeId: selectedStoreId, enabled: true, dailySyncTimes: times }) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "자동 수집 설정 저장에 실패했습니다.");
+      setStatus(`자동 수집 시간 저장: ${(payload.config.daily_sync_times ?? []).map((time: string) => time.slice(0, 5)).join(", ")} (한국 시간)`);
+      await load();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "자동 수집 설정 저장에 실패했습니다.");
+    } finally {
+      setSavingConfig(false);
+    }
+  };
+
+  const syncNow = async () => {
+    if (!selectedStoreId) return;
+    setSyncing(true);
+    try {
+      const response = await fetch("/api/erp/searchad/sync", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ storeId: selectedStoreId }) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.message ?? payload.error ?? "검색광고 수집에 실패했습니다.");
+      setStatus(payload.message);
+      await load();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "검색광고 수집에 실패했습니다.");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const total = data?.totals;
   return (
     <>
-      <PageHeader title="네이버 광고 상세" description="비즈머니 잔액, 광고 성과, 캠페인 상태를 확인하는 예시 화면입니다." />
+      <PageHeader title="네이버 광고" description="읽기 전용으로 캠페인 성과를 저장합니다. 광고 생성·입찰 변경은 이 단계에서 하지 않습니다." />
       <StoreContextBar />
-      <section className="panel automation-panel">
-        <h2>키워드 세트 기반 광고 자동화</h2>
-        <p className="plain-text">키워드 조합/분석 페이지에서 만든 50개 태그용, 1000개 파워링크용 키워드 세트를 바탕으로 이후 자동화될 기능입니다.</p>
-        <div className="automation-actions">
-          <button className="btn btn-light" type="button">검색광고 태그 등록 자동화 준비중</button>
-          <button className="btn btn-light" type="button">파워링크 키워드 세팅 자동화 준비중</button>
-          <button className="btn btn-light" type="button">캠페인/광고그룹 생성 준비중</button>
-          <button className="btn btn-light" type="button">제외키워드 입력 자동화 준비중</button>
+      <section className="panel">
+        <div className="section-headline">
+          <div>
+            <h2>{selectedStore?.name ?? "매장 선택 필요"} · 읽기 전용 수집</h2>
+            <p className="plain-text">기본은 하루 1회입니다. 향후 최대 3개 시간까지 미리 설정할 수 있지만, 현재 Vercel 자동 수집은 06:10 한 번만 실행합니다.</p>
+          </div>
+          <button className="btn btn-primary" disabled={!selectedStoreId || syncing} onClick={syncNow} type="button">{syncing ? "수집 중" : "지금 읽기 전용 갱신"}</button>
         </div>
+        <div className="filter-row">
+          <label className="store-field"><span>자동 수집 시간 (한국시간, 쉼표로 최대 3개)</span><input value={dailyTimes} onChange={(event) => setDailyTimes(event.target.value)} placeholder="06:10" /></label>
+          <button className="btn btn-light" disabled={!selectedStoreId || savingConfig} onClick={saveConfig} type="button">{savingConfig ? "저장 중" : "자동 수집 설정 저장"}</button>
+        </div>
+        {status && <p className="plain-text">{status}</p>}
       </section>
       <div className="detail-grid">
-        <MetricCard label="비즈머니 잔액" value="54,253원" tone="red" />
-        <MetricCard label="노출수" value="116,014" />
-        <MetricCard label="클릭수" value="2,597" />
-        <MetricCard label="CPC" value="156원" />
+        <MetricCard label="비즈머니 잔액" value={data?.latestSnapshot?.balance_status === "available" ? `${Math.round(data.latestSnapshot.biz_money_balance ?? 0).toLocaleString("ko-KR")}원` : "API 검증 필요"} tone={data?.latestSnapshot?.balance_status === "available" ? "green" : "yellow"} />
+        <MetricCard label="노출수" value={total ? total.impressions.toLocaleString("ko-KR") : "데이터 없음"} />
+        <MetricCard label="클릭수" value={total ? total.clicks.toLocaleString("ko-KR") : "데이터 없음"} />
+        <MetricCard label="광고비 / 평균 CPC" value={total ? `${Math.round(total.spend).toLocaleString("ko-KR")}원 / ${total.averageCpc ? `${Math.round(total.averageCpc).toLocaleString("ko-KR")}원` : "미지원"}` : "데이터 없음"} />
+        <MetricCard label="평균 순위" value={total?.averageRank ? total.averageRank.toFixed(2) : "미지원"} />
+        <MetricCard label="캠페인" value={data?.latestSnapshot ? `${data.latestSnapshot.active_campaign_count}/${data.latestSnapshot.campaign_count}` : "데이터 없음"} />
       </div>
       <section className="panel">
-        <h2>캠페인 목록</h2>
+        <h2>캠페인별 일간 성과</h2>
         <div className="list-table">
-          {["장가 플레이스_메인", "장가 플레이스_중위", "장가 플레이스_하위"].map((item, index) => (
-            <div className="list-row" key={item}>
-              <strong>{item}</strong>
-              <span className="chip green">광고 ON</span>
-              <span>일예산 {(index + 7).toLocaleString()}0,000원</span>
-              <span>잔여 예산 {index === 0 ? "0원" : "확인중"}</span>
+          {(data?.campaigns ?? []).map((campaign) => (
+            <div className="list-row" key={`${campaign.campaign_id}-${campaign.campaign_name}`}>
+              <strong>{campaign.campaign_name ?? campaign.campaign_id}</strong>
+              <span className={`chip ${campaign.campaign_status === "OFF" ? "orange" : "green"}`}>{campaign.campaign_status === "OFF" ? "광고 OFF" : "광고 ON"}</span>
+              <span>노출 {campaign.impressions.toLocaleString("ko-KR")} · 클릭 {campaign.clicks.toLocaleString("ko-KR")}</span>
+              <span>광고비 {Math.round(campaign.ad_spend).toLocaleString("ko-KR")}원 · CPC {campaign.average_cpc ? `${Math.round(campaign.average_cpc).toLocaleString("ko-KR")}원` : "미지원"}</span>
+              <span>순위 {campaign.average_rank?.toFixed(2) ?? "미지원"} · 일예산 {campaign.daily_budget ? `${Math.round(campaign.daily_budget).toLocaleString("ko-KR")}원` : "미설정"}</span>
             </div>
           ))}
+          {!data?.campaigns?.length && <p className="plain-text">아직 저장된 검색광고 성과가 없습니다. 매장 정보에서 Customer ID를 저장한 뒤 ‘지금 읽기 전용 갱신’을 누르세요.</p>}
         </div>
       </section>
     </>
@@ -2610,6 +2684,7 @@ function canonicalStoreToRow(store: CanonicalStore): StoreRow {
     weeklyInflow: [0, 0, 0, 0],
     weeklyTasks: [0, 0, 0, 0],
     memo: store.memo ?? "",
+    publicUid: store.publicUid,
   };
 }
 
@@ -2741,10 +2816,11 @@ function HomePageContent() {
         return { ok: false, message };
       }
       await refreshStores();
-      if (!storeId && payload.store?.id) selectStore(payload.store.id);
+      const savedStoreId = payload.store?.id ?? storeId ?? undefined;
+      if (!storeId && savedStoreId) selectStore(savedStoreId);
       const message = "매장 원장 저장 완료 · 목록과 업로드 선택기에 추가했습니다.";
       setStoreImportStatus(message);
-      return { ok: true, message };
+      return { ok: true, message, storeId: savedStoreId };
     } catch (error) {
       const message = error instanceof Error ? error.message : "매장 저장에 실패했습니다.";
       setStoreImportStatus(message);
