@@ -45,6 +45,7 @@ type StoreRow = {
   weeklyInflow: number[];
   weeklyTasks: [number, number, number, number];
   memo: string;
+  naverMid?: string | null;
   publicUid?: string | null;
 };
 
@@ -854,6 +855,17 @@ function TaskWeeks({ values, onClick }: { values: [number, number, number, numbe
 }
 
 function Sidebar({ activeView, setView }: { activeView: ViewId; setView: (view: ViewId) => void }) {
+  const { selectedStore } = useStoreRegistry();
+
+  const openPublicStorePage = (destination: "report" | "infor") => {
+    const naverMid = selectedStore?.naverMid?.trim() ?? "";
+    if (!/^\d{1,20}$/.test(naverMid)) {
+      setView("store");
+      return;
+    }
+    window.open(`/store/${encodeURIComponent(naverMid)}/${destination}`, "_blank", "noopener,noreferrer");
+  };
+
   return (
     <aside className="sidebar">
       <div className="brand">
@@ -867,7 +879,11 @@ function Sidebar({ activeView, setView }: { activeView: ViewId; setView: (view: 
             <button
               className={`clean-nav-link ${activeView === item.id ? "active" : ""}`}
               key={item.id}
-              onClick={() => setView(item.id)}
+              onClick={() => {
+                if (item.id === "owner") return openPublicStorePage("report");
+                if (item.id === "questionnaire") return openPublicStorePage("infor");
+                setView(item.id);
+              }}
               type="button"
             >
               <Icon size={16} />
@@ -1192,6 +1208,16 @@ function Dashboard({
     setView(view);
   };
 
+  const openPublicStoreView = (store: StoreRow, destination: "report" | "infor") => {
+    selectStore(store.id);
+    const naverMid = store.naverMid?.trim() ?? "";
+    if (!/^\d{1,20}$/.test(naverMid)) {
+      setView("store");
+      return;
+    }
+    window.open(`/store/${encodeURIComponent(naverMid)}/${destination}`, "_blank", "noopener,noreferrer");
+  };
+
   const sortArrow = (mode: DashboardSort) => (
     sortMode === mode ? <span className="sort-arrow" aria-hidden="true">{sortDirection === "asc" ? "▲" : "▼"}</span> : null
   );
@@ -1345,13 +1371,13 @@ function Dashboard({
                 </td>
                 <td>
                   <div className="link-stack">
-                    <button className="mini-link" onClick={() => openStoreView(store.id, "owner")} type="button">
+                    <button className="mini-link" onClick={() => openPublicStoreView(store, "report")} type="button">
                       사장님 보고서
                     </button>
                     <button className="mini-link" onClick={() => openStoreView(store.id, "store")} type="button">
                       매장 정보
                     </button>
-                    <button className="mini-link" onClick={() => openStoreView(store.id, "questionnaire")} type="button">
+                    <button className="mini-link" onClick={() => openPublicStoreView(store, "infor")} type="button">
                       정보안내문
                     </button>
                     <button className="mini-link strong-link" onClick={() => openStoreView(store.id, "weeklyFlow")} type="button">
@@ -2684,6 +2710,7 @@ function canonicalStoreToRow(store: CanonicalStore): StoreRow {
     weeklyInflow: [0, 0, 0, 0],
     weeklyTasks: [0, 0, 0, 0],
     memo: store.memo ?? "",
+    naverMid: store.naverMid,
     publicUid: store.publicUid,
   };
 }
