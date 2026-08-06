@@ -1,12 +1,12 @@
 import { notFound } from "next/navigation";
-import { formatWon, getPublicStoreByUid } from "@/lib/public-store";
+import { formatWon, getPublicStore } from "@/lib/public-store";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 type PageProps = { params: Promise<{ mid: string }> };
 
 export default async function PublicDaylistPage({ params }: PageProps) {
   const { mid } = await params;
-  const store = await getPublicStoreByUid(mid);
+  const store = await getPublicStore(mid);
   if (!store) notFound();
 
   const supabase = getSupabaseAdmin();

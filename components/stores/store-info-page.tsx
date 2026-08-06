@@ -324,13 +324,16 @@ export function StoreInfoPage({
   const setupItems = setupItemsByMonth[selectedSetupMonth] ?? [];
   const monthlySetupPhotos = setupPhotos.filter((photo) => photo.month === selectedSetupMonth);
   const publicStoreUid = stores?.find((store) => store.id === selectedStoreId)?.publicUid?.trim() ?? "";
+  const publicStoreIdentifier = /^\d{1,20}$/.test(profile.placeMid.trim())
+    ? profile.placeMid.trim()
+    : publicStoreUid;
   const ownerReportUrl = useMemo(
-    () => publicStoreUid ? `/store/${encodeURIComponent(publicStoreUid)}/report` : "",
-    [publicStoreUid],
+    () => publicStoreIdentifier ? `/store/${encodeURIComponent(publicStoreIdentifier)}/report` : "",
+    [publicStoreIdentifier],
   );
   const informationUrl = useMemo(
-    () => publicStoreUid ? `/store/${encodeURIComponent(publicStoreUid)}/info` : "",
-    [publicStoreUid],
+    () => publicStoreIdentifier ? `/store/${encodeURIComponent(publicStoreIdentifier)}/infor` : "",
+    [publicStoreIdentifier],
   );
 
   useEffect(() => {

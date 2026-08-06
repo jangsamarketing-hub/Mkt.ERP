@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getPublicStoreByUid } from "@/lib/public-store";
+import { getPublicStore } from "@/lib/public-store";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 type RouteContext = { params: Promise<{ mid: string }> };
@@ -25,7 +25,7 @@ function normalizeAnswers(value: unknown) {
 export async function POST(request: Request, context: RouteContext) {
   try {
     const { mid } = await context.params;
-    const store = await getPublicStoreByUid(mid);
+    const store = await getPublicStore(mid);
     if (!store) return NextResponse.json({ error: "공유 링크를 찾을 수 없습니다." }, { status: 404 });
     const body = await request.json() as { answers?: unknown };
     const answers = normalizeAnswers(body.answers);

@@ -11,16 +11,23 @@ export type PublicStore = {
   contractPeriodWeeks: number;
 };
 
-export async function getPublicStoreByUid(uid: string): Promise<PublicStore | null> {
-  const normalizedUid = uid.trim();
-  if (!/^[a-z0-9]{16,64}$/i.test(normalizedUid)) return null;
-  const { data, error } = await getSupabaseAdmin()
+export async function getPublicStore(identifier: string): Promise<PublicStore | null> {
+  const normalizedIdentifier = identifier.trim();
+  const isNaverMid = /^\d{1,20}$/.test(normalizedIdentifier);
+  const isLegacyPublicUid = /^[a-z0-9]{16,64}$/i.test(normalizedIdentifier);
+  if (!isNaverMid && !isLegacyPublicUid) return null;
+
+  let query = getSupabaseAdmin()
     .from("erp_stores")
     .select("id,name,category,region,naver_mid,public_uid,management_start_date,contract_period_weeks,lifecycle_status")
-    .eq("public_uid", normalizedUid)
     .eq("lifecycle_status", "active")
-    .limit(1)
-    .maybeSingle();
+    .limit(1);
+
+  query = isNaverMid
+    ? query.eq("naver_mid", normalizedIdentifier)
+    : query.eq("public_uid", normalizedIdentifier);
+
+  const { data, error } = await query.maybeSingle();
   if (error) throw error;
   if (!data?.public_uid) return null;
   return {
@@ -34,6 +41,9 @@ export async function getPublicStoreByUid(uid: string): Promise<PublicStore | nu
     contractPeriodWeeks: Number(data.contract_period_weeks ?? 4),
   };
 }
+
+// Old opaque-UID links remain valid while new links use the easier-to-share Naver MID.
+export const getPublicStoreByUid = getPublicStore;
 
 export function formatWon(value: number | null | undefined) {
   return `${Math.round(Number(value ?? 0)).toLocaleString("ko-KR")}원`;
