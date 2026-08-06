@@ -316,6 +316,8 @@ export function StoreInfoPage({
   const [profileSaving, setProfileSaving] = useState(false);
   const [privateProfileStatus, setPrivateProfileStatus] = useState("");
   const [privateProfileSaving, setPrivateProfileSaving] = useState(false);
+  const [latestInformationSubmission, setLatestInformationSubmission] = useState<{ answers: Record<string, string>; submittedAt: string } | null>(null);
+  const [informationSubmissionStatus, setInformationSubmissionStatus] = useState("");
   const [businessRegistrationUploading, setBusinessRegistrationUploading] = useState(false);
   const [creditUploadStatus, setCreditUploadStatus] = useState("");
   const [placeUploadStatus, setPlaceUploadStatus] = useState("");
@@ -428,6 +430,32 @@ export function StoreInfoPage({
       })
       .catch((error) => {
         if (!cancelled) setPrivateProfileStatus(error instanceof Error ? error.message : "비공개 매장 정보를 불러오지 못했습니다.");
+      });
+    return () => { cancelled = true; };
+  }, [selectedStoreId, creating]);
+
+  useEffect(() => {
+    if (!selectedStoreId || creating) {
+      setLatestInformationSubmission(null);
+      return;
+    }
+    let cancelled = false;
+    setInformationSubmissionStatus("");
+    void fetch(`/api/erp/stores/${encodeURIComponent(selectedStoreId)}/information-submissions`)
+      .then(async (response) => {
+        const payload = await response.json() as {
+          submission?: { answers?: Record<string, string>; submitted_at?: string } | null;
+          error?: string;
+        };
+        if (!response.ok) throw new Error(payload.error ?? "정보안내문 제출 내용을 불러오지 못했습니다.");
+        if (cancelled) return;
+        const submission = payload.submission;
+        setLatestInformationSubmission(submission?.answers && submission.submitted_at
+          ? { answers: submission.answers, submittedAt: submission.submitted_at }
+          : null);
+      })
+      .catch((error) => {
+        if (!cancelled) setInformationSubmissionStatus(error instanceof Error ? error.message : "정보안내문 제출 내용을 불러오지 못했습니다.");
       });
     return () => { cancelled = true; };
   }, [selectedStoreId, creating]);
@@ -1006,6 +1034,27 @@ export function StoreInfoPage({
           <span className="plain-text">{placeUploadStatus || "JSON 또는 CSV · 기간, 원본, 수집 상태를 매장별로 보관"}</span>
         </div>
         <p className="plain-text">네이버 Excel 형식은 실제 샘플 규격을 확인한 뒤 추가합니다. 현재는 JSON과 CSV만 숫자 데이터로 처리합니다.</p>
+      </section>
+
+      <section className="panel">
+        <div className="section-headline">
+          <div>
+            <h2>사장님 정보안내문 최신 제출</h2>
+            <p className="plain-text">공유 링크에서 제출한 원본입니다. 내부 확인 후 매장 원장에 반영합니다.</p>
+          </div>
+        </div>
+        {informationSubmissionStatus && <p className="plain-text">{informationSubmissionStatus}</p>}
+        {latestInformationSubmission ? (
+          <div className="task-table compact-list">
+            <p className="plain-text">제출 시각: {new Date(latestInformationSubmission.submittedAt).toLocaleString("ko-KR")}</p>
+            {Object.entries(latestInformationSubmission.answers).map(([label, value]) => (
+              <div className="task-row-static" key={label}>
+                <strong>{label}</strong>
+                <span>{value}</span>
+              </div>
+            ))}
+          </div>
+        ) : <p className="plain-text">아직 사장님이 제출한 정보안내문이 없습니다.</p>}
       </section>
 
       <section className="panel">
