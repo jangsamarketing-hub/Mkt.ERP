@@ -157,6 +157,16 @@ a {
   font-weight: 700;
 }
 
+.credential-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+@media (max-width: 760px) {
+  .credential-pair { grid-template-columns: 1fr; }
+}
+
 .sidebar-account .logout-button {
   width: 100%;
 }

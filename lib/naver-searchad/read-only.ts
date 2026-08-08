@@ -64,9 +64,11 @@ function numberOrNull(value: unknown) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-async function requestSearchAd<T>(customerId: string, uri: string, search: URLSearchParams = new URLSearchParams()) {
-  const accessLicense = requiredEnv("NAVER_SEARCHAD_ACCESS_LICENSE");
-  const secretKey = requiredEnv("NAVER_SEARCHAD_SECRET_KEY");
+export type SearchAdCredentials = { accessLicense: string; secretKey: string };
+
+async function requestSearchAd<T>(customerId: string, credentials: SearchAdCredentials, uri: string, search: URLSearchParams = new URLSearchParams()) {
+  const accessLicense = credentials.accessLicense || requiredEnv("NAVER_SEARCHAD_ACCESS_LICENSE");
+  const secretKey = credentials.secretKey || requiredEnv("NAVER_SEARCHAD_SECRET_KEY");
   const timestamp = Date.now().toString();
   const url = new URL(`${SEARCHAD_BASE_URL}${uri}`);
   search.forEach((value, key) => url.searchParams.set(key, value));
@@ -98,8 +100,8 @@ function chunk<T>(items: T[], size: number) {
   return chunks;
 }
 
-export async function fetchSearchAdReadOnlySnapshot(customerId: string, statDate: string): Promise<SearchAdReadOnlyResult> {
-  const campaigns = await requestSearchAd<Campaign[]>(customerId, "/ncc/campaigns");
+export async function fetchSearchAdReadOnlySnapshot(customerId: string, statDate: string, credentials: SearchAdCredentials = { accessLicense: "", secretKey: "" }): Promise<SearchAdReadOnlyResult> {
+  const campaigns = await requestSearchAd<Campaign[]>(customerId, credentials, "/ncc/campaigns");
   const validCampaigns = campaigns.filter((campaign) => Boolean(campaign.nccCampaignId));
   const statsById = new Map<string, StatRow>();
 
@@ -111,7 +113,7 @@ export async function fetchSearchAdReadOnlySnapshot(customerId: string, statDate
       timeIncrement: "allDays",
       timeRange: JSON.stringify({ since: statDate, until: statDate }),
     });
-    const payload = await requestSearchAd<{ data?: StatRow[] }>(customerId, "/stats", params);
+    const payload = await requestSearchAd<{ data?: StatRow[] }>(customerId, credentials, "/stats", params);
     for (const row of payload.data ?? []) if (row.id) statsById.set(row.id, row);
   }
 

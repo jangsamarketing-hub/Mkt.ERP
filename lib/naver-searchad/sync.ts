@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { fetchSearchAdReadOnlySnapshot } from "./read-only";
+import { decryptCredential } from "@/lib/security/credential-vault";
 
 function kstDate(offsetDays = 0) {
   const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
@@ -24,6 +25,17 @@ export async function syncStoreSearchAd(storeId: string, options: { runKind: "da
   if (identifierError) throw identifierError;
   if (!identifier?.identifier_value) return { ok: false, status: "skipped", message: "검색광고 Customer ID가 아직 연결되지 않았습니다.", statDate };
 
+  const { data: credential, error: credentialError } = await supabase
+    .from("erp_store_external_credentials")
+    .select("username,secret_ciphertext")
+    .eq("store_id", storeId)
+    .eq("credential_kind", "searchad_api")
+    .maybeSingle();
+  if (credentialError) throw credentialError;
+  if (!credential?.username || !credential.secret_ciphertext) {
+    return { ok: false, status: "skipped", message: "이 매장의 검색광고 Access License와 Secret Key를 먼저 저장해주세요.", statDate };
+  }
+
   const { data: run, error: runError } = await supabase
     .from("erp_searchad_sync_runs")
     .insert({ store_id: storeId, run_kind: options.runKind, requested_for_date: statDate })
@@ -32,7 +44,10 @@ export async function syncStoreSearchAd(storeId: string, options: { runKind: "da
   if (runError) throw runError;
 
   try {
-    const snapshot = await fetchSearchAdReadOnlySnapshot(String(identifier.identifier_value), statDate);
+    const snapshot = await fetchSearchAdReadOnlySnapshot(String(identifier.identifier_value), statDate, {
+      accessLicense: credential.username,
+      secretKey: decryptCredential(credential.secret_ciphertext),
+    });
     const rows = snapshot.campaigns.map((row) => ({
       store_id: storeId,
       stat_date: statDate,

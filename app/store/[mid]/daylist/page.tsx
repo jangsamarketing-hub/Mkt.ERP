@@ -10,6 +10,19 @@ type PublicTask = {
   due_date: string | null;
   completed: boolean;
   progress_percent: number;
+  task_week?: number | null;
+  evidence_text?: string | null;
+  evidence_urls?: string[] | null;
+};
+
+type PublicWorkUpdate = {
+  id: string;
+  task_date: string | null;
+  task_week: number | null;
+  title: string;
+  status: "pending" | "in_progress" | "completed" | "blocked";
+  evidence_text: string | null;
+  evidence_urls: string[] | null;
 };
 
 function formatWon(value: number) {
@@ -30,7 +43,7 @@ export default async function PublicDaylistPage({ params }: PageProps) {
   if (!store) notFound();
 
   const supabase = getSupabaseAdmin();
-  const [dailyResult, inflowResult, taskResult] = await Promise.all([
+  const [dailyResult, inflowResult, taskResult, workResult] = await Promise.all([
     supabase
       .from("erp_card_daily_summary")
       .select("transaction_date,net_sales,net_payment_count")
@@ -51,23 +64,46 @@ export default async function PublicDaylistPage({ params }: PageProps) {
       .eq("store_id", store.id)
       .order("due_date", { ascending: true, nullsFirst: false })
       .order("sort_order", { ascending: true }),
+    supabase
+      .from("erp_store_work_updates")
+      .select("id,task_date,task_week,title,status,evidence_text,evidence_urls")
+      .eq("store_id", store.id)
+      .eq("public_visible", true)
+      .order("task_week", { ascending: true, nullsFirst: false })
+      .order("task_date", { ascending: true, nullsFirst: false })
+      .order("created_at", { ascending: true }),
   ]);
   if (dailyResult.error) throw dailyResult.error;
   if (inflowResult.error) throw inflowResult.error;
   if (taskResult.error) throw taskResult.error;
+  if (workResult.error) throw workResult.error;
 
   const dailyRows = dailyResult.data ?? [];
   const recentSales = dailyRows.reduce((sum, row) => sum + Number(row.net_sales ?? 0), 0);
   const recentPayments = dailyRows.reduce((sum, row) => sum + Number(row.net_payment_count ?? 0), 0);
   const inflowSummary = (inflowResult.data?.summary ?? {}) as Record<string, unknown>;
   const placeInflow = typeof inflowSummary.placeInflow === "number" ? inflowSummary.placeInflow : null;
-  const tasks = (taskResult.data ?? []) as PublicTask[];
+  const workUpdates = (workResult.data ?? []) as PublicWorkUpdate[];
+  const tasks = workUpdates.length
+    ? workUpdates.map((task) => ({
+      id: task.id,
+      label: task.title,
+      due_date: task.task_date,
+      completed: task.status === "completed",
+      progress_percent: task.status === "in_progress" ? 50 : task.status === "completed" ? 100 : 0,
+      task_week: task.task_week,
+      evidence_text: task.evidence_text,
+      evidence_urls: task.evidence_urls,
+    }))
+    : (taskResult.data ?? []) as PublicTask[];
   const completedCount = tasks.filter((task) => task.completed).length;
   const startDate = store.managementStartDate;
   const tasksByWeek = new Map<number, PublicTask[]>();
 
   tasks.forEach((task) => {
-    const week = startDate && task.due_date
+    const week = task.task_week
+      ? task.task_week
+      : startDate && task.due_date
       ? Math.max(1, Math.min(store.contractPeriodWeeks, Math.floor(daysBetween(startDate, task.due_date) / 7) + 1))
       : 1;
     tasksByWeek.set(week, [...(tasksByWeek.get(week) ?? []), task]);

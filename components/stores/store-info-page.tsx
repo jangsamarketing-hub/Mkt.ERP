@@ -322,6 +322,9 @@ export function StoreInfoPage({
   const [creditUploadStatus, setCreditUploadStatus] = useState("");
   const [placeUploadStatus, setPlaceUploadStatus] = useState("");
   const [uploading, setUploading] = useState<"credit" | "place" | null>(null);
+  const [credentialStatus, setCredentialStatus] = useState("");
+  const [credentialSaving, setCredentialSaving] = useState(false);
+  const [credentialConfigured, setCredentialConfigured] = useState({ naver: false, searchAd: false });
   const [selectedWeek, setSelectedWeek] = useState<1 | 2 | 3 | 4>(4);
   const setupItems = setupItemsByMonth[selectedSetupMonth] ?? [];
   const monthlySetupPhotos = setupPhotos.filter((photo) => photo.month === selectedSetupMonth);
@@ -431,6 +434,22 @@ export function StoreInfoPage({
       .catch((error) => {
         if (!cancelled) setPrivateProfileStatus(error instanceof Error ? error.message : "비공개 매장 정보를 불러오지 못했습니다.");
       });
+    return () => { cancelled = true; };
+  }, [selectedStoreId, creating]);
+
+  useEffect(() => {
+    if (!selectedStoreId || creating) {
+      setCredentialConfigured({ naver: false, searchAd: false });
+      return;
+    }
+    let cancelled = false;
+    void fetch(`/api/erp/stores/${encodeURIComponent(selectedStoreId)}/credentials`)
+      .then(async (response) => {
+        const payload = await response.json() as { naver?: unknown; searchAd?: unknown; error?: string };
+        if (!response.ok) throw new Error(payload.error ?? "계정 저장 상태를 불러오지 못했습니다.");
+        if (!cancelled) setCredentialConfigured({ naver: Boolean(payload.naver), searchAd: Boolean(payload.searchAd) });
+      })
+      .catch((error) => { if (!cancelled) setCredentialStatus(error instanceof Error ? error.message : "계정 저장 상태를 불러오지 못했습니다."); });
     return () => { cancelled = true; };
   }, [selectedStoreId, creating]);
 
@@ -564,6 +583,8 @@ export function StoreInfoPage({
         const identifierPayload = await identifierResponse.json() as { error?: string };
         if (!identifierResponse.ok) throw new Error(identifierPayload.error ?? "검색광고 Customer ID 저장에 실패했습니다.");
       }
+      if (result.ok && savedStoreId && (profile.naverPassword.trim() || profile.naverSecretKey.trim())) await saveCredentials(savedStoreId);
+      if (result.ok && savedStoreId) await syncStoreTasks(savedStoreId);
       setSavedAt(result.message);
     } catch (error) {
       setSavedAt(error instanceof Error ? error.message : "매장 저장에 실패했습니다.");
@@ -583,6 +604,71 @@ export function StoreInfoPage({
   const copyText = async (text: string) => {
     await navigator.clipboard.writeText(new URL(text, window.location.origin).toString());
     setSavedAt("링크 복사 완료");
+  };
+
+  const saveCredentials = async (storeId = selectedStoreId) => {
+    if (!storeId || creating) throw new Error("먼저 매장을 저장해주세요.");
+    const requests: Promise<void>[] = [];
+    if (profile.naverPassword.trim()) {
+      requests.push(fetch(`/api/erp/stores/${encodeURIComponent(storeId)}/credentials`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: "naver_login", username: profile.naverId.trim(), secret: profile.naverPassword }),
+      }).then(async (response) => { const payload = await response.json() as { error?: string }; if (!response.ok) throw new Error(payload.error ?? "네이버 계정 저장에 실패했습니다."); }));
+    }
+    if (profile.naverSecretKey.trim()) {
+      requests.push(fetch(`/api/erp/stores/${encodeURIComponent(storeId)}/credentials`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: "searchad_api", username: profile.naverAccessLicense.trim(), secret: profile.naverSecretKey }),
+      }).then(async (response) => { const payload = await response.json() as { error?: string }; if (!response.ok) throw new Error(payload.error ?? "검색광고 API 저장에 실패했습니다."); }));
+    }
+    if (!requests.length) return;
+    setCredentialSaving(true);
+    try {
+      await Promise.all(requests);
+      setCredentialConfigured((current) => ({ naver: current.naver || Boolean(profile.naverPassword.trim()), searchAd: current.searchAd || Boolean(profile.naverSecretKey.trim()) }));
+      setProfile((current) => ({ ...current, naverPassword: "", naverSecretKey: "" }));
+      setCredentialStatus("암호화하여 저장했습니다. 공개 링크에는 표시되지 않습니다.");
+    } finally { setCredentialSaving(false); }
+  };
+
+  const syncStoreTasks = async (storeId: string) => {
+    const existingResponse = await fetch(`/api/erp/stores/${encodeURIComponent(storeId)}/work-updates`);
+    const existingPayload = await existingResponse.json() as { updates?: { id: string }[]; error?: string };
+    if (!existingResponse.ok) throw new Error(existingPayload.error ?? "사장님 업무 목록을 불러오지 못했습니다.");
+    await Promise.all((existingPayload.updates ?? []).map(async (update) => {
+      const response = await fetch(`/api/erp/stores/${encodeURIComponent(storeId)}/work-updates?id=${encodeURIComponent(update.id)}`, { method: "DELETE" });
+      if (!response.ok) throw new Error("기존 업무 목록을 교체하지 못했습니다.");
+    }));
+    const tasks = storeTasks.length ? storeTasks : hydrateTasks(weeklyTasks);
+    await Promise.all(tasks.map(async (task) => {
+      const response = await fetch(`/api/erp/stores/${encodeURIComponent(storeId)}/work-updates`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          taskWeek: task.week,
+          taskDate: task.date,
+          title: task.name,
+          owner: "company",
+          status: task.status === "완료" ? "completed" : task.status === "미완료" ? "blocked" : "pending",
+          publicVisible: true,
+        }),
+      });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "사장님 업무 목록 저장에 실패했습니다.");
+    }));
+  };
+
+  const revealCredential = async (kind: "naver_login" | "searchad_api") => {
+    if (!selectedStoreId || creating) return;
+    try {
+      const response = await fetch(`/api/erp/stores/${encodeURIComponent(selectedStoreId)}/credentials`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind }),
+      });
+      const payload = await response.json() as { username?: string | null; secret?: string; error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "계정 정보를 불러오지 못했습니다.");
+      if (kind === "naver_login") setProfile((current) => ({ ...current, naverId: payload.username ?? current.naverId, naverPassword: payload.secret ?? "" }));
+      else setProfile((current) => ({ ...current, naverAccessLicense: payload.username ?? current.naverAccessLicense, naverSecretKey: payload.secret ?? "" }));
+      setCredentialStatus("입력칸에 표시했습니다. 필요한 복사 후 화면을 닫거나 저장하세요.");
+    } catch (error) { setCredentialStatus(error instanceof Error ? error.message : "계정 정보를 불러오지 못했습니다."); }
   };
 
   const savePrivateProfile = async () => {
@@ -1172,9 +1258,25 @@ export function StoreInfoPage({
 
         <div>
           <h2>네이버/검색광고</h2>
-          <Field label="네이버 ID" field="naverId" profile={profile} setProfile={setProfile} />
-          <Field label="Customer ID" field="naverCustomerId" profile={profile} setProfile={setProfile} />
-          <p className="plain-text">비밀번호·Secret Key는 이 화면에 입력하거나 저장하지 않습니다. 추후 승인형 연동 설정에서 별도로 연결합니다.</p>
+          <div className="credential-pair">
+            <Field label="네이버 ID" field="naverId" profile={profile} setProfile={setProfile} />
+            <Field label="네이버 비밀번호" field="naverPassword" profile={profile} setProfile={setProfile} type="password" />
+          </div>
+          <div className="store-link-actions">
+            <button className="btn btn-light" disabled={creating || !credentialConfigured.naver} onClick={() => revealCredential("naver_login")} type="button">저장 비밀번호 보기·복사</button>
+            <button className="btn btn-light" disabled={creating || credentialSaving || !profile.naverPassword.trim()} onClick={() => void saveCredentials()} type="button">네이버 계정 저장</button>
+          </div>
+          <Field label="검색광고 Customer ID" field="naverCustomerId" profile={profile} setProfile={setProfile} />
+          <div className="credential-pair">
+            <Field label="검색광고 Access License" field="naverAccessLicense" profile={profile} setProfile={setProfile} />
+            <Field label="검색광고 Secret Key" field="naverSecretKey" profile={profile} setProfile={setProfile} type="password" />
+          </div>
+          <div className="store-link-actions">
+            <button className="btn btn-light" disabled={creating || !credentialConfigured.searchAd} onClick={() => revealCredential("searchad_api")} type="button">저장 Secret 보기·복사</button>
+            <button className="btn btn-primary" disabled={creating || credentialSaving || !profile.naverSecretKey.trim()} onClick={() => void saveCredentials()} type="button">검색광고 API 저장</button>
+          </div>
+          <p className="plain-text">비밀번호와 Secret Key는 암호화하여 해당 매장에만 저장합니다. 사장님 공개 링크에는 절대 표시되지 않습니다.</p>
+          {credentialStatus && <p className="plain-text">{credentialStatus}</p>}
         </div>
 
         <div>
