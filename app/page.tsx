@@ -729,6 +729,34 @@ function parseLooseCsvRows(csvText: string) {
 type SalesChartGranularity = "day" | "week" | "month";
 type SalesChartPoint = { key: string; label: string; netSales: number; netPaymentCount: number };
 
+function chartSalesAxis(maxValue: number) {
+  const rawStep = Math.max(1, maxValue / 4);
+  const magnitude = 10 ** Math.floor(Math.log10(rawStep));
+  const step = Math.ceil(rawStep / magnitude) * magnitude;
+  return Array.from({ length: 5 }, (_, index) => step * (4 - index));
+}
+
+function CompactVerticalBars({ values, labels, tone = "blue" }: { values: number[]; labels: string[]; tone?: "blue" | "yellow" }) {
+  const max = Math.max(...values, 1);
+  return (
+    <div className="compact-vertical-bars">
+      {values.map((value, index) => (
+        <div className="compact-vertical-item" key={`${labels[index]}-${value}`} title={`${labels[index]} · ${value.toLocaleString("ko-KR")}원`}>
+          <strong>{value ? shortWon(value) : "-"}</strong>
+          <div className="compact-vertical-track"><i className={tone} style={{ height: `${value ? Math.max(4, (value / max) * 100) : 0}%` }} /></div>
+          <span>{labels[index]}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function shortWon(value: number) {
+  if (value >= 100_000_000) return `${(value / 100_000_000).toFixed(value % 100_000_000 === 0 ? 0 : 1)}억`;
+  if (value >= 10_000) return `${Math.round(value / 10_000).toLocaleString("ko-KR")}만`;
+  return value.toLocaleString("ko-KR");
+}
+
 function salesWeekStart(dateText: string) {
   const date = new Date(`${dateText}T00:00:00Z`);
   const day = date.getUTCDay();
@@ -772,6 +800,7 @@ function SalesComboChart({ points }: { points: SalesChartPoint[] }) {
     const y = 100 - (Number(row.netPaymentCount) / maxCount) * 88;
     return `${x},${y}`;
   }).join(" ");
+  const salesAxis = chartSalesAxis(maxSales);
 
   return (
     <div className="combo-chart">
@@ -782,6 +811,9 @@ function SalesComboChart({ points }: { points: SalesChartPoint[] }) {
           <span>결제 {formatNumber(hovered.netPaymentCount)}건</span>
         </div>
       )}
+      <div aria-hidden="true" className="combo-sales-axis">
+        {salesAxis.map((value) => <span key={value}>{shortWon(value)}원</span>)}
+      </div>
       <div className="combo-chart-grid" style={{ gridTemplateColumns: `repeat(${Math.max(1, points.length)}, minmax(0, 1fr))` }}>
         <svg aria-hidden="true" className="combo-payment-line" preserveAspectRatio="none" viewBox="0 0 100 100">
           <polyline points={paymentLine} />
@@ -2233,13 +2265,13 @@ function SalesPage() {
         <div>
           <h2>시간대별 매출</h2>
           {cardData?.hourly.length ? (
-            <BarSet labels={cardData.hourly.map((row) => `${row.hour}시`)} values={cardData.hourly.map((row) => row.netSales)} />
+            <CompactVerticalBars labels={cardData.hourly.map((row) => `${row.hour}시`)} values={cardData.hourly.map((row) => row.netSales)} />
           ) : <p className="plain-text">선택한 기간에 시간대별 데이터가 없습니다.</p>}
         </div>
         <div>
           <h2>요일별 매출</h2>
           {cardData?.weekdays.length ? (
-            <BarSet labels={["월", "화", "수", "목", "금", "토", "일"]} values={cardData.weekdays.map((row) => row.netSales)} tone="green" />
+            <CompactVerticalBars labels={["월", "화", "수", "목", "금", "토", "일"]} values={cardData.weekdays.map((row) => row.netSales)} tone="yellow" />
           ) : <p className="plain-text">선택한 기간에 요일별 데이터가 없습니다.</p>}
         </div>
       </section>

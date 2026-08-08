@@ -1454,6 +1454,7 @@ a {
   align-items: end;
   gap: 2px;
   min-height: 220px;
+  margin-left: 58px;
   overflow: hidden;
   border-bottom: 1px solid #dbe4f0;
 }
@@ -1470,8 +1471,8 @@ a {
 
 .combo-payment-line polyline {
   fill: none;
-  stroke: #10b981;
-  stroke-width: 0.65;
+  stroke: #f59e0b;
+  stroke-width: 1.6;
   vector-effect: non-scaling-stroke;
 }
 
@@ -1521,7 +1522,7 @@ a {
   z-index: 2;
   width: 7px;
   height: 7px;
-  border: 2px solid #10b981;
+  border: 2px solid #f59e0b;
   border-radius: 999px;
   background: #fff;
 }
@@ -2651,6 +2652,22 @@ a {
   color: #fff;
 }
 
+.combo-sales-axis {
+  position: absolute;
+  top: 18px;
+  bottom: 38px;
+  left: 7px;
+  z-index: 1;
+  display: flex;
+  width: 46px;
+  flex-direction: column;
+  justify-content: space-between;
+  color: #64748b;
+  font-size: 10px;
+  line-height: 1;
+  text-align: right;
+}
+
 .inline-actions {
   display: flex;
   flex-wrap: wrap;
@@ -3019,6 +3036,52 @@ a {
 .wide-bar-fill.pink {
   background: #ec4899;
 }
+
+.compact-vertical-bars {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(32px, 1fr));
+  align-items: end;
+  gap: 7px;
+  min-height: 180px;
+  padding: 12px 6px 2px;
+  border-bottom: 1px solid #dbe4f0;
+}
+
+.compact-vertical-item {
+  display: grid;
+  min-width: 0;
+  grid-template-rows: 19px 120px 18px;
+  align-items: end;
+  gap: 4px;
+  text-align: center;
+}
+
+.compact-vertical-item strong {
+  overflow: hidden;
+  color: #5a6e88;
+  font-size: 10px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-vertical-track {
+  display: flex;
+  height: 120px;
+  align-items: end;
+  justify-content: center;
+  border-radius: 5px 5px 0 0;
+  background: #f1f5f9;
+}
+
+.compact-vertical-track i {
+  width: min(26px, 72%);
+  border-radius: 5px 5px 0 0;
+  background: #7fb0f4;
+}
+
+.compact-vertical-track i.yellow { background: #f6b84a; }
+.compact-vertical-item span { color: #64748b; font-size: 10px; }
 
 .target-grid {
   display: grid;
