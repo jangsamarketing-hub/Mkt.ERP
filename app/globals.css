@@ -3070,6 +3070,55 @@ a {
   border-bottom: 1px solid #dbe4f0;
 }
 
+.compact-vertical-bars,
+.two-col,
+.stat-pill-grid,
+.goal-month-row,
+.goal-month-values {
+  min-width: 0;
+}
+
+.compact-vertical-item strong,
+.stat-pill-grid strong,
+.goal-month-values span {
+  font-variant-numeric: tabular-nums;
+}
+
+.public-work-entry { border-top: 1px solid #e5edf7; }
+.public-work-entry:first-child { border-top: 0; }
+.public-work-row {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+.public-work-row:hover { background: #f8fbff; }
+.public-work-detail {
+  margin: 0 14px 12px;
+  padding: 12px 14px;
+  border: 1px solid #d9e7f8;
+  border-radius: 10px;
+  background: #f8fbff;
+  color: #324766;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.public-work-detail p { margin: 0; white-space: pre-wrap; }
+.public-work-detail ul { margin: 10px 0 0; padding-left: 18px; }
+.public-work-detail a { color: #2563eb; }
+
+@media (max-width: 760px) {
+  .two-col { grid-template-columns: minmax(0, 1fr); }
+  .compact-vertical-bars { gap: 3px; padding-inline: 0; }
+  .compact-vertical-item { grid-template-rows: 18px 90px 16px; }
+  .compact-vertical-track { height: 90px; }
+  .compact-vertical-item strong { font-size: 9px; }
+  .stat-pill-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .stat-pill-grid strong { min-width: 0; overflow: hidden; font-size: 11px; }
+  .stat-pill-grid strong span { display: block; overflow: hidden; text-overflow: ellipsis; }
+}
+
 .compact-vertical-item {
   display: grid;
   min-width: 0;

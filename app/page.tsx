@@ -48,6 +48,14 @@ type StoreRow = {
   weeklyTasks: [number, number, number, number];
   memo: string;
   naverMid?: string | null;
+  clientName?: string | null;
+  managerName?: string | null;
+  category?: string | null;
+  region?: string | null;
+  managementStartDate?: string | null;
+  contractStartDate?: string | null;
+  contractPeriodWeeks?: number | null;
+  naverPlaceUrl?: string | null;
   publicUid?: string | null;
 };
 
@@ -2765,6 +2773,14 @@ function canonicalStoreToRow(store: CanonicalStore): StoreRow {
     weeklyTasks: [0, 0, 0, 0],
     memo: store.memo ?? "",
     naverMid: store.naverMid,
+    clientName: store.clientName,
+    managerName: store.managerName,
+    category: store.category,
+    region: store.region,
+    managementStartDate: store.managementStartDate,
+    contractStartDate: store.contractStartDate,
+    contractPeriodWeeks: store.contractPeriodWeeks,
+    naverPlaceUrl: store.naverPlaceUrl,
     publicUid: store.publicUid,
   };
 }

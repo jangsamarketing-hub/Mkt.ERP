@@ -51,6 +51,15 @@ type StoreRow = {
   manager: string;
   week: string;
   memo: string;
+  clientName?: string | null;
+  managerName?: string | null;
+  category?: string | null;
+  region?: string | null;
+  managementStartDate?: string | null;
+  contractStartDate?: string | null;
+  contractPeriodWeeks?: number | null;
+  naverPlaceUrl?: string | null;
+  naverMid?: string | null;
   publicUid?: string | null;
 };
 
@@ -79,6 +88,9 @@ type StoreProfile = {
   storeName: string;
   ownerPhone: string;
   businessRegistrationNumber: string;
+  businessStartDate: string;
+  rentalDeposit: string;
+  monthlyRent: string;
   specialNotes: string;
   businessRegistrationStoragePath: string;
   industry: string;
@@ -118,6 +130,9 @@ const defaultStoreProfile: StoreProfile = {
   storeName: "",
   ownerPhone: "",
   businessRegistrationNumber: "",
+  businessStartDate: "",
+  rentalDeposit: "",
+  monthlyRent: "",
   specialNotes: "",
   businessRegistrationStoragePath: "",
   industry: "",
@@ -283,7 +298,7 @@ export function StoreInfoPage({
   stores?: StoreRow[];
   createRequest?: number;
 }) {
-  const { selectedStoreId, selectStore: setSelectedStoreId } = useStoreRegistry();
+  const { selectedStoreId, selectedStore, selectStore: setSelectedStoreId } = useStoreRegistry();
   const [profile, setProfile] = useState<StoreProfile>(defaultStoreProfile);
   const [creating, setCreating] = useState(false);
   const [goldenKeywordJobs, setGoldenKeywordJobs] = useState<GoldenKeywordJob[]>([]);
@@ -324,14 +339,19 @@ export function StoreInfoPage({
   const [uploading, setUploading] = useState<"credit" | "place" | null>(null);
   const [credentialStatus, setCredentialStatus] = useState("");
   const [credentialSaving, setCredentialSaving] = useState(false);
-  const [credentialConfigured, setCredentialConfigured] = useState({ naver: false, searchAd: false });
+  const [credentialConfigured, setCredentialConfigured] = useState({
+    naver: false,
+    searchAd: false,
+    instagram: false,
+    google: false,
+    kakaoMap: false,
+  });
   const [selectedWeek, setSelectedWeek] = useState<1 | 2 | 3 | 4>(4);
   const setupItems = setupItemsByMonth[selectedSetupMonth] ?? [];
   const monthlySetupPhotos = setupPhotos.filter((photo) => photo.month === selectedSetupMonth);
   const publicStoreUid = stores?.find((store) => store.id === selectedStoreId)?.publicUid?.trim() ?? "";
-  const publicStoreIdentifier = /^\d{1,20}$/.test(profile.placeMid.trim())
-    ? profile.placeMid.trim()
-    : publicStoreUid;
+  // 공개 링크는 네이버 MID가 아니라 우리 원장의 public UID만 사용한다.
+  const publicStoreIdentifier = publicStoreUid;
   const ownerReportUrl = useMemo(
     () => publicStoreIdentifier ? `/store/${encodeURIComponent(publicStoreIdentifier)}/report` : "",
     [publicStoreIdentifier],
@@ -397,14 +417,21 @@ export function StoreInfoPage({
     const selectedStore = stores.find((store) => store.id === selectedStoreId);
     if (!selectedStore) return;
     setCreating(false);
+    if (!selectedStore) return;
     setProfile((current) => ({
       ...current,
+      clientName: selectedStore.clientName ?? "",
       storeName: selectedStore.name,
-      manager: selectedStore.manager,
-      contractPeriod: selectedStore.week === "신규" ? "4주" : selectedStore.week.replace("차", ""),
-      memo: selectedStore.memo || current.memo,
+      industry: selectedStore.category ?? "",
+      region: selectedStore.region ?? "",
+      manager: selectedStore.managerName ?? "",
+      startDate: selectedStore.managementStartDate ?? selectedStore.contractStartDate ?? "",
+      contractPeriod: `${selectedStore.contractPeriodWeeks ?? 4}주`,
+      placeUrl: selectedStore.naverPlaceUrl ?? "",
+      placeMid: selectedStore.naverMid ?? "",
+      memo: selectedStore.memo ?? "",
     }));
-  }, [selectedStoreId, stores]);
+  }, [selectedStoreId, stores, selectedStore]);
 
   useEffect(() => {
     if (!selectedStoreId || creating) return;
@@ -416,6 +443,9 @@ export function StoreInfoPage({
           profile?: {
             owner_phone?: string | null;
             business_registration_number?: string | null;
+            business_start_date?: string | null;
+            rental_deposit?: number | null;
+            monthly_rent?: number | null;
             special_notes?: string | null;
             business_registration_storage_path?: string | null;
           } | null;
@@ -427,6 +457,9 @@ export function StoreInfoPage({
           ...current,
           ownerPhone: payload.profile?.owner_phone ?? "",
           businessRegistrationNumber: payload.profile?.business_registration_number ?? "",
+          businessStartDate: payload.profile?.business_start_date ?? "",
+          rentalDeposit: payload.profile?.rental_deposit?.toString() ?? "",
+          monthlyRent: payload.profile?.monthly_rent?.toString() ?? "",
           specialNotes: payload.profile?.special_notes ?? "",
           businessRegistrationStoragePath: payload.profile?.business_registration_storage_path ?? "",
         }));
@@ -439,15 +472,38 @@ export function StoreInfoPage({
 
   useEffect(() => {
     if (!selectedStoreId || creating) {
-      setCredentialConfigured({ naver: false, searchAd: false });
+      setCredentialConfigured({ naver: false, searchAd: false, instagram: false, google: false, kakaoMap: false });
       return;
     }
     let cancelled = false;
     void fetch(`/api/erp/stores/${encodeURIComponent(selectedStoreId)}/credentials`)
       .then(async (response) => {
-        const payload = await response.json() as { naver?: unknown; searchAd?: unknown; error?: string };
+        const payload = await response.json() as {
+          naver?: { username?: string | null } | null;
+          searchAd?: { username?: string | null } | null;
+          instagram?: { username?: string | null } | null;
+          google?: { username?: string | null } | null;
+          kakaoMap?: { username?: string | null } | null;
+          error?: string;
+        };
         if (!response.ok) throw new Error(payload.error ?? "계정 저장 상태를 불러오지 못했습니다.");
-        if (!cancelled) setCredentialConfigured({ naver: Boolean(payload.naver), searchAd: Boolean(payload.searchAd) });
+        if (!cancelled) {
+          setCredentialConfigured({
+            naver: Boolean(payload.naver),
+            searchAd: Boolean(payload.searchAd),
+            instagram: Boolean(payload.instagram),
+            google: Boolean(payload.google),
+            kakaoMap: Boolean(payload.kakaoMap),
+          });
+          setProfile((current) => ({
+            ...current,
+            naverId: payload.naver?.username ?? current.naverId,
+            naverAccessLicense: payload.searchAd?.username ?? current.naverAccessLicense,
+            instagramId: payload.instagram?.username ?? current.instagramId,
+            googleId: payload.google?.username ?? current.googleId,
+            kakaoMapId: payload.kakaoMap?.username ?? current.kakaoMapId,
+          }));
+        }
       })
       .catch((error) => { if (!cancelled) setCredentialStatus(error instanceof Error ? error.message : "계정 저장 상태를 불러오지 못했습니다."); });
     return () => { cancelled = true; };
@@ -609,24 +665,39 @@ export function StoreInfoPage({
   const saveCredentials = async (storeId = selectedStoreId) => {
     if (!storeId || creating) throw new Error("먼저 매장을 저장해주세요.");
     const requests: Promise<void>[] = [];
-    if (profile.naverPassword.trim()) {
+    const queuedKinds: (keyof typeof credentialConfigured)[] = [];
+    const queueCredential = (
+      configuredKey: keyof typeof credentialConfigured,
+      kind: "naver_login" | "searchad_api" | "instagram_login" | "google_login" | "kakao_map_login",
+      username: string,
+      secret: string,
+      errorMessage: string,
+    ) => {
+      if (!secret.trim()) return;
       requests.push(fetch(`/api/erp/stores/${encodeURIComponent(storeId)}/credentials`, {
         method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind: "naver_login", username: profile.naverId.trim(), secret: profile.naverPassword }),
-      }).then(async (response) => { const payload = await response.json() as { error?: string }; if (!response.ok) throw new Error(payload.error ?? "네이버 계정 저장에 실패했습니다."); }));
-    }
-    if (profile.naverSecretKey.trim()) {
-      requests.push(fetch(`/api/erp/stores/${encodeURIComponent(storeId)}/credentials`, {
-        method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind: "searchad_api", username: profile.naverAccessLicense.trim(), secret: profile.naverSecretKey }),
-      }).then(async (response) => { const payload = await response.json() as { error?: string }; if (!response.ok) throw new Error(payload.error ?? "검색광고 API 저장에 실패했습니다."); }));
-    }
+        body: JSON.stringify({ kind, username: username.trim(), secret }),
+      }).then(async (response) => { const payload = await response.json() as { error?: string }; if (!response.ok) throw new Error(payload.error ?? errorMessage); }));
+      queuedKinds.push(configuredKey);
+    };
+    queueCredential("naver", "naver_login", profile.naverId, profile.naverPassword, "네이버 계정 저장에 실패했습니다.");
+    queueCredential("searchAd", "searchad_api", profile.naverAccessLicense, profile.naverSecretKey, "검색광고 API 저장에 실패했습니다.");
+    queueCredential("instagram", "instagram_login", profile.instagramId, profile.instagramPassword, "인스타그램 계정 저장에 실패했습니다.");
+    queueCredential("google", "google_login", profile.googleId, profile.googlePassword, "구글 계정 저장에 실패했습니다.");
+    queueCredential("kakaoMap", "kakao_map_login", profile.kakaoMapId, profile.kakaoMapPassword, "카카오맵 계정 저장에 실패했습니다.");
     if (!requests.length) return;
     setCredentialSaving(true);
     try {
       await Promise.all(requests);
-      setCredentialConfigured((current) => ({ naver: current.naver || Boolean(profile.naverPassword.trim()), searchAd: current.searchAd || Boolean(profile.naverSecretKey.trim()) }));
-      setProfile((current) => ({ ...current, naverPassword: "", naverSecretKey: "" }));
+      setCredentialConfigured((current) => ({ ...current, ...Object.fromEntries(queuedKinds.map((kind) => [kind, true])) }));
+      setProfile((current) => ({
+        ...current,
+        naverPassword: "",
+        naverSecretKey: "",
+        instagramPassword: "",
+        googlePassword: "",
+        kakaoMapPassword: "",
+      }));
       setCredentialStatus("암호화하여 저장했습니다. 공개 링크에는 표시되지 않습니다.");
     } finally { setCredentialSaving(false); }
   };
@@ -657,7 +728,7 @@ export function StoreInfoPage({
     }));
   };
 
-  const revealCredential = async (kind: "naver_login" | "searchad_api") => {
+  const revealCredential = async (kind: "naver_login" | "searchad_api" | "instagram_login" | "google_login" | "kakao_map_login") => {
     if (!selectedStoreId || creating) return;
     try {
       const response = await fetch(`/api/erp/stores/${encodeURIComponent(selectedStoreId)}/credentials`, {
@@ -665,9 +736,15 @@ export function StoreInfoPage({
       });
       const payload = await response.json() as { username?: string | null; secret?: string; error?: string };
       if (!response.ok) throw new Error(payload.error ?? "계정 정보를 불러오지 못했습니다.");
-      if (kind === "naver_login") setProfile((current) => ({ ...current, naverId: payload.username ?? current.naverId, naverPassword: payload.secret ?? "" }));
-      else setProfile((current) => ({ ...current, naverAccessLicense: payload.username ?? current.naverAccessLicense, naverSecretKey: payload.secret ?? "" }));
-      setCredentialStatus("입력칸에 표시했습니다. 필요한 복사 후 화면을 닫거나 저장하세요.");
+      setProfile((current) => {
+        if (kind === "naver_login") return { ...current, naverId: payload.username ?? current.naverId, naverPassword: payload.secret ?? "" };
+        if (kind === "searchad_api") return { ...current, naverAccessLicense: payload.username ?? current.naverAccessLicense, naverSecretKey: payload.secret ?? "" };
+        if (kind === "instagram_login") return { ...current, instagramId: payload.username ?? current.instagramId, instagramPassword: payload.secret ?? "" };
+        if (kind === "google_login") return { ...current, googleId: payload.username ?? current.googleId, googlePassword: payload.secret ?? "" };
+        return { ...current, kakaoMapId: payload.username ?? current.kakaoMapId, kakaoMapPassword: payload.secret ?? "" };
+      });
+      if (payload.secret) await navigator.clipboard.writeText(payload.secret);
+      setCredentialStatus("실제 값이 입력칸에 표시되고 클립보드에도 복사되었습니다.");
     } catch (error) { setCredentialStatus(error instanceof Error ? error.message : "계정 정보를 불러오지 못했습니다."); }
   };
 
@@ -685,6 +762,9 @@ export function StoreInfoPage({
         body: JSON.stringify({
           ownerPhone: profile.ownerPhone,
           businessRegistrationNumber: profile.businessRegistrationNumber,
+          businessStartDate: profile.businessStartDate,
+          rentalDeposit: profile.rentalDeposit,
+          monthlyRent: profile.monthlyRent,
           specialNotes: profile.specialNotes,
         }),
       });
@@ -1260,7 +1340,7 @@ export function StoreInfoPage({
           <h2>네이버/검색광고</h2>
           <div className="credential-pair">
             <Field label="네이버 ID" field="naverId" profile={profile} setProfile={setProfile} />
-            <Field label="네이버 비밀번호" field="naverPassword" profile={profile} setProfile={setProfile} type="password" />
+            <Field label="네이버 비밀번호" field="naverPassword" profile={profile} setProfile={setProfile} type={profile.naverPassword ? "text" : "password"} />
           </div>
           <div className="store-link-actions">
             <button className="btn btn-light" disabled={creating || !credentialConfigured.naver} onClick={() => revealCredential("naver_login")} type="button">저장 비밀번호 보기·복사</button>
@@ -1269,7 +1349,7 @@ export function StoreInfoPage({
           <Field label="검색광고 Customer ID" field="naverCustomerId" profile={profile} setProfile={setProfile} />
           <div className="credential-pair">
             <Field label="검색광고 Access License" field="naverAccessLicense" profile={profile} setProfile={setProfile} />
-            <Field label="검색광고 Secret Key" field="naverSecretKey" profile={profile} setProfile={setProfile} type="password" />
+            <Field label="검색광고 Secret Key" field="naverSecretKey" profile={profile} setProfile={setProfile} type={profile.naverSecretKey ? "text" : "password"} />
           </div>
           <div className="store-link-actions">
             <button className="btn btn-light" disabled={creating || !credentialConfigured.searchAd} onClick={() => revealCredential("searchad_api")} type="button">저장 Secret 보기·복사</button>
@@ -1281,11 +1361,32 @@ export function StoreInfoPage({
 
         <div>
           <h2>SNS/외부 계정</h2>
-          <Field label="인스타그램 ID" field="instagramId" profile={profile} setProfile={setProfile} />
-          <Field label="구글 ID" field="googleId" profile={profile} setProfile={setProfile} />
-          <Field label="카카오맵 ID" field="kakaoMapId" profile={profile} setProfile={setProfile} />
+          <div className="credential-pair">
+            <Field label="인스타그램 ID" field="instagramId" profile={profile} setProfile={setProfile} />
+            <Field label="인스타그램 비밀번호" field="instagramPassword" profile={profile} setProfile={setProfile} type={profile.instagramPassword ? "text" : "password"} />
+          </div>
+          <div className="store-link-actions">
+            <button className="btn btn-light" disabled={creating || !credentialConfigured.instagram} onClick={() => revealCredential("instagram_login")} type="button">저장 비밀번호 보기·복사</button>
+            <button className="btn btn-light" disabled={creating || credentialSaving || !profile.instagramPassword.trim()} onClick={() => void saveCredentials()} type="button">인스타그램 계정 저장</button>
+          </div>
+          <div className="credential-pair">
+            <Field label="구글 ID" field="googleId" profile={profile} setProfile={setProfile} />
+            <Field label="구글 비밀번호" field="googlePassword" profile={profile} setProfile={setProfile} type={profile.googlePassword ? "text" : "password"} />
+          </div>
+          <div className="store-link-actions">
+            <button className="btn btn-light" disabled={creating || !credentialConfigured.google} onClick={() => revealCredential("google_login")} type="button">저장 비밀번호 보기·복사</button>
+            <button className="btn btn-light" disabled={creating || credentialSaving || !profile.googlePassword.trim()} onClick={() => void saveCredentials()} type="button">구글 계정 저장</button>
+          </div>
+          <div className="credential-pair">
+            <Field label="카카오맵 ID" field="kakaoMapId" profile={profile} setProfile={setProfile} />
+            <Field label="카카오맵 비밀번호" field="kakaoMapPassword" profile={profile} setProfile={setProfile} type={profile.kakaoMapPassword ? "text" : "password"} />
+          </div>
+          <div className="store-link-actions">
+            <button className="btn btn-light" disabled={creating || !credentialConfigured.kakaoMap} onClick={() => revealCredential("kakao_map_login")} type="button">저장 비밀번호 보기·복사</button>
+            <button className="btn btn-light" disabled={creating || credentialSaving || !profile.kakaoMapPassword.trim()} onClick={() => void saveCredentials()} type="button">카카오맵 계정 저장</button>
+          </div>
           <Field label="카카오톡 채널" field="kakaoChannelUrl" profile={profile} setProfile={setProfile} />
-          <p className="plain-text">외부 서비스 비밀번호와 금융 로그인 정보는 저장하지 않습니다. 매출 파일은 업로드 방식으로 연결합니다.</p>
+          <p className="plain-text">아이디와 비밀번호는 매장별 암호화 원장에 저장됩니다. 공개 보고서·정보안내문에는 표시되지 않습니다.</p>
         </div>
       </section>
 
@@ -1303,6 +1404,9 @@ export function StoreInfoPage({
           <div>
             <Field label="사장님 연락처" field="ownerPhone" profile={profile} setProfile={setProfile} type="tel" />
             <Field label="사업자등록번호" field="businessRegistrationNumber" profile={profile} setProfile={setProfile} />
+            <Field label="개업일" field="businessStartDate" profile={profile} setProfile={setProfile} type="date" />
+            <Field label="보증금" field="rentalDeposit" profile={profile} setProfile={setProfile} type="number" />
+            <Field label="월세" field="monthlyRent" profile={profile} setProfile={setProfile} type="number" />
           </div>
           <div>
             <div className="store-field">

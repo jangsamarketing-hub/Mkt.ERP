@@ -14,10 +14,19 @@ function dateOrNull(value: unknown) {
 function normalizeUpdate(body: Record<string, unknown>) {
   const title = String(body.title ?? "").trim();
   const owner = String(body.owner ?? "company");
-  const status = String(body.status ?? "pending");
+  const requestedStatus = String(body.status ?? "pending");
   if (!title || title.length > 200) throw new Error("업무 제목을 입력해주세요.");
-  if (!OWNERS.has(owner) || !STATUSES.has(status)) throw new Error("업무 상태가 올바르지 않습니다.");
-  const evidenceUrls = Array.isArray(body.evidenceUrls) ? body.evidenceUrls.map((value) => String(value).trim()).filter(Boolean).slice(0, 10) : [];
+  if (!OWNERS.has(owner) || !STATUSES.has(requestedStatus)) throw new Error("업무 상태가 올바르지 않습니다.");
+
+  const evidenceUrls = Array.isArray(body.evidenceUrls)
+    ? body.evidenceUrls.map((value) => String(value).trim()).filter(Boolean).slice(0, 10)
+    : [];
+  const evidenceText = String(body.evidenceText ?? "").trim() || null;
+  // 기입/첨부가 실제로 있는 경우에만 자동으로 기입완료 처리한다.
+  const status = evidenceText || evidenceUrls.length
+    ? "completed"
+    : requestedStatus === "blocked" ? "blocked" : "pending";
+
   return {
     title,
     owner,
@@ -26,7 +35,7 @@ function normalizeUpdate(body: Record<string, unknown>) {
     task_week: Number.isInteger(Number(body.taskWeek)) ? Number(body.taskWeek) : null,
     setup_item_id: String(body.setupItemId ?? "").trim() || null,
     public_visible: body.publicVisible !== false,
-    evidence_text: String(body.evidenceText ?? "").trim() || null,
+    evidence_text: evidenceText,
     evidence_urls: evidenceUrls,
     completed_at: status === "completed" ? new Date().toISOString() : null,
   };
