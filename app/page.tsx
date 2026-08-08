@@ -43,6 +43,7 @@ type StoreRow = {
     sales: number | null;
   };
   weeklyInflow: number[];
+  weeklySales?: Array<number | null>;
   weeklyTasks: [number, number, number, number];
   memo: string;
   naverMid?: string | null;
@@ -489,7 +490,7 @@ function getDashboardSignal(current: number | null, previous: number | null, his
 
 function getStoreSignal(store: StoreRow): Signal {
   const inflow = getDashboardSignal(store.naverInflow, store.previous.naverInflow, store.weeklyInflow);
-  const sales = getDashboardSignal(store.sales, store.previous.sales, []);
+  const sales = getDashboardSignal(store.sales, store.previous.sales, store.weeklySales ?? []);
   if (inflow === "red" || sales === "red") return "red";
   if (inflow === "yellow" || sales === "yellow") return "yellow";
   if (inflow === "blue" || sales === "blue") return "blue";
@@ -1227,6 +1228,7 @@ function Dashboard({
           sales: placeStore.previousSales,
         },
         weeklyInflow: placeStore.inflowBuckets.map((value) => value ?? 0),
+        weeklySales: placeStore.salesBuckets,
         weeklyTasks: base?.weeklyTasks ?? [0, 0, 0, 0],
         memo: base?.memo ?? "데이터 연결 대기",
       } satisfies StoreRow;
