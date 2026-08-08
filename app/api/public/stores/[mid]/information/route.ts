@@ -6,9 +6,14 @@ type RouteContext = { params: Promise<{ mid: string }> };
 
 const allowedFields = new Set([
   "storeName", "ownerName", "ownerPhone", "storeAddress", "storePhone", "businessHours", "breakTime", "closedDays",
-  "placeUrl", "placeMid", "instagramHandle", "kakaoChannelUrl", "mainMenus", "averageOrderValue", "tableCount",
-  "peakHours", "targetCustomers", "repeatCustomerRate", "monthlySalesTarget", "storeStrengths", "currentConcerns",
-  "competitors", "desiredKeywords", "avoidMarketing", "expectedOutcome", "brandStory", "additionalRequests",
+  "naverId", "placeUrl", "placeMid", "searchAdCustomerId", "placeManagementStatus",
+  "instagramHandle", "kakaoChannelUrl", "googleBusinessUrl", "deliveryApps",
+  "mainMenus", "averageOrderValue", "tableCount", "peakHours", "targetCustomers", "repeatCustomerRate", "monthlySalesTarget",
+  "storeStrengths", "currentConcerns", "competitors", "desiredKeywords", "avoidMarketing", "expectedOutcome",
+  "ownerCareer", "openingReason", "brandStory", "specialIngredients", "mediaHistory",
+  "menuOne", "menuTwo", "menuThree", "setMenus", "seasonMenus",
+  "reviewEventStatus", "reviewBenefit", "returnVisitMethod", "customerNotes",
+  "additionalRequests", "avoidExpressions", "additionalNotes",
 ]);
 
 function normalizeAnswers(value: unknown) {
