@@ -344,6 +344,7 @@ type DashboardPlaceStore = {
   previousInflow: number | null;
   currentSales: number | null;
   previousSales: number | null;
+  bizMoney: number | null;
 };
 
 type GoldenKeywordJob = {
@@ -378,6 +379,25 @@ type ServerCardData = {
   hourly: Array<{ hour: number; netSales: number; netPaymentCount: number }>;
   weekdays: Array<{ weekday: number; netSales: number; netPaymentCount: number }>;
   totals: { netSales: number; netPaymentCount: number; amountPerPayment: number | null };
+  customerMetrics: {
+    identifiableCustomerCount: number;
+    newCustomerCount: number;
+    returningCustomerCount: number;
+    returningRate: number | null;
+    averageCustomerTicket: number | null;
+    basis: "card_mask";
+  };
+};
+
+type StoreGoalSettings = {
+  target_months: number;
+  target_net_sales: number | null;
+  target_new_customers: number | null;
+  target_returning_customers: number | null;
+  target_return_rate: number | null;
+  target_average_ticket: number | null;
+  table_count: number | null;
+  cpc_cost_override: number | null;
 };
 
 const tagKeywords = [
@@ -1217,7 +1237,7 @@ function Dashboard({
         week: base?.week ?? "신규",
         name: placeStore.name,
         manager: placeStore.managerName || base?.manager || "미배정",
-        bizMoney: base?.bizMoney ?? null,
+        bizMoney: placeStore.bizMoney,
         naverInflow: placeStore.currentInflow,
         sales: placeStore.currentSales,
         previous: {
@@ -2074,7 +2094,11 @@ function SalesPage() {
   const [goalMonths, setGoalMonths] = useState(6);
   const [targetSales, setTargetSales] = useState(60000000);
   const [targetTicket, setTargetTicket] = useState(90000);
+  const [targetReturnRate, setTargetReturnRate] = useState(25);
+  const [tableCount, setTableCount] = useState(0);
   const [referenceCac, setReferenceCac] = useState(2180);
+  const [goalSaving, setGoalSaving] = useState(false);
+  const [goalStatus, setGoalStatus] = useState("");
   useEffect(() => {
     if (!selectedSalesStoreId) {
       setCardData(null);
@@ -2096,6 +2120,28 @@ function SalesPage() {
       .catch((error) => setSalesUploadMessage(error instanceof Error ? error.message : "매출 데이터를 불러오지 못했습니다."))
       .finally(() => setSalesLoading(false));
   }, [selectedSalesStoreId, appliedRangeStart, appliedRangeEnd, queryVersion]);
+
+  useEffect(() => {
+    if (!selectedSalesStoreId) return;
+    let active = true;
+    fetch(`/api/erp/stores/${selectedSalesStoreId}/goals`)
+      .then(async (response) => {
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "목표 설정을 불러오지 못했습니다.");
+        return payload.goal as StoreGoalSettings | null;
+      })
+      .then((goal) => {
+        if (!active || !goal) return;
+        setGoalMonths(goal.target_months ?? 6);
+        setTargetSales(Number(goal.target_net_sales ?? 60000000));
+        setTargetTicket(Number(goal.target_average_ticket ?? 90000));
+        setTargetReturnRate(Number(goal.target_return_rate ?? 25));
+        setTableCount(Number(goal.table_count ?? 0));
+        setReferenceCac(Number(goal.cpc_cost_override ?? 2180));
+      })
+      .catch((error) => active && setGoalStatus(error instanceof Error ? error.message : "목표 설정을 불러오지 못했습니다."));
+    return () => { active = false; };
+  }, [selectedSalesStoreId]);
 
   const applySalesRange = () => {
     if (rangeStart > rangeEnd) {
@@ -2125,28 +2171,65 @@ function SalesPage() {
 
   const goalPlan = useMemo(() => {
     const currentSales = cardData?.totals.netSales ?? 0;
-    const currentPayments = cardData?.totals.netPaymentCount ?? 0;
+    const currentCustomers = cardData?.customerMetrics.identifiableCustomerCount ?? 0;
+    const currentNewCustomers = cardData?.customerMetrics.newCustomerCount ?? 0;
+    const currentReturningCustomers = cardData?.customerMetrics.returningCustomerCount ?? 0;
+    const currentReturnRate = cardData?.customerMetrics.returningRate ?? 0;
+    const selectedDays = Math.max(1, Math.floor((new Date(`${appliedRangeEnd}T00:00:00`).getTime() - new Date(`${appliedRangeStart}T00:00:00`).getTime()) / 86400000) + 1);
     const months = Math.max(1, Math.min(12, goalMonths || 1));
     const safeTargetSales = Math.max(0, targetSales || 0);
     const safeTargetTicket = Math.max(1, targetTicket || 1);
-    const targetPayments = Math.ceil(safeTargetSales / safeTargetTicket);
-    const monthlyAdditionalPayments = Math.max(0, Math.ceil((targetPayments - currentPayments) / months));
+    const targetCustomers = Math.ceil(safeTargetSales / safeTargetTicket);
+    const safeTargetReturnRate = Math.max(0, Math.min(100, targetReturnRate || 0));
+    const targetReturningCustomers = Math.round(targetCustomers * (safeTargetReturnRate / 100));
+    const targetNewCustomers = Math.max(0, targetCustomers - targetReturningCustomers);
+    const monthlyAdditionalCustomers = Math.max(0, Math.ceil((targetCustomers - currentCustomers) / months));
+    const dailyTableTurnover = tableCount > 0 ? Number((currentCustomers / selectedDays / tableCount).toFixed(2)) : null;
+    const targetDailyTableTurnover = tableCount > 0 ? Number((targetCustomers / 30 / tableCount).toFixed(2)) : null;
     const rows = Array.from({ length: months + 1 }, (_, index) => {
       const ratio = index / months;
       const sales = Math.round(currentSales + (safeTargetSales - currentSales) * ratio);
-      const payments = Math.round(currentPayments + (targetPayments - currentPayments) * ratio);
-      return { label: index === 0 ? "현재" : `${index}개월`, sales, payments };
+      const customers = Math.round(currentCustomers + (targetCustomers - currentCustomers) * ratio);
+      const newCustomers = Math.round(currentNewCustomers + (targetNewCustomers - currentNewCustomers) * ratio);
+      const returningCustomers = Math.max(0, customers - newCustomers);
+      return { label: index === 0 ? "현재" : `${index}개월`, sales, customers, newCustomers, returningCustomers };
     });
     return {
       currentSales,
-      currentPayments,
-      currentTicket: cardData?.totals.amountPerPayment ?? 0,
-      targetPayments,
-      monthlyAdditionalPayments,
-      estimatedMonthlyBudget: monthlyAdditionalPayments * Math.max(0, referenceCac || 0),
+      currentCustomers,
+      currentNewCustomers,
+      currentReturningCustomers,
+      currentReturnRate,
+      currentTicket: cardData?.customerMetrics.averageCustomerTicket ?? 0,
+      targetCustomers,
+      targetNewCustomers,
+      targetReturningCustomers,
+      monthlyAdditionalCustomers,
+      dailyTableTurnover,
+      targetDailyTableTurnover,
+      estimatedMonthlyBudget: monthlyAdditionalCustomers * Math.max(0, referenceCac || 0),
       rows,
     };
-  }, [cardData, goalMonths, referenceCac, targetSales, targetTicket]);
+  }, [appliedRangeEnd, appliedRangeStart, cardData, goalMonths, referenceCac, tableCount, targetReturnRate, targetSales, targetTicket]);
+
+  const saveGoalSettings = async () => {
+    if (!selectedSalesStoreId) return;
+    setGoalSaving(true);
+    try {
+      const response = await fetch(`/api/erp/stores/${selectedSalesStoreId}/goals`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ targetMonths: goalMonths, targetNetSales: targetSales, targetAverageTicket: targetTicket, targetReturnRate, tableCount, cpcCostOverride: referenceCac }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "목표 설정 저장에 실패했습니다.");
+      setGoalStatus("목표·테이블 설정을 저장했습니다.");
+    } catch (error) {
+      setGoalStatus(error instanceof Error ? error.message : "목표 설정 저장에 실패했습니다.");
+    } finally {
+      setGoalSaving(false);
+    }
+  };
 
   const uploadSalesFile = async (file: File | undefined) => {
     if (!file) return;
@@ -2298,24 +2381,34 @@ function SalesPage() {
         <div className="section-headline">
           <div>
             <h2>개월 목표 · 광고비 참고 계산</h2>
-            <p className="plain-text">카드 원장으로 확인 가능한 순매출과 순결제건수만 사용합니다. 신규·재방문 고객은 CRM/POS 식별자가 연결된 뒤 계산합니다.</p>
+            <p className="plain-text">매출은 결과입니다. 카드 식별 기준의 신규·재방문, 객단가, 테이블 회전을 함께 보며 목표 매출까지의 선행지표를 관리합니다.</p>
           </div>
+          <button className="btn btn-primary" disabled={!selectedSalesStoreId || goalSaving} onClick={saveGoalSettings} type="button">{goalSaving ? "저장 중" : "목표 설정 저장"}</button>
         </div>
+        {goalStatus && <p className="plain-text">{goalStatus}</p>}
         <div className="goal-panels">
           <div className="goal-form-card">
             <h3>현재 선택 기간</h3>
             <InfoLine label="순매출" value={cardData ? `${formatNumber(goalPlan.currentSales)}원` : "데이터 없음"} />
-            <InfoLine label="순결제건수" value={cardData ? `${formatNumber(goalPlan.currentPayments)}건` : "데이터 없음"} />
-            <InfoLine label="건당 결제액" value={cardData ? `${formatNumber(goalPlan.currentTicket)}원` : "데이터 없음"} />
-            <InfoLine label="신규·재방문" value="CRM/POS 연결 필요" />
+            <InfoLine label="신규고객" value={cardData ? `${formatNumber(goalPlan.currentNewCustomers)}명` : "데이터 없음"} />
+            <InfoLine label="재방문고객" value={cardData ? `${formatNumber(goalPlan.currentReturningCustomers)}명` : "데이터 없음"} />
+            <InfoLine label="재방문률" value={cardData ? `${goalPlan.currentReturnRate.toLocaleString("ko-KR", { maximumFractionDigits: 1 })}%` : "데이터 없음"} />
+            <InfoLine label="객단가" value={cardData ? `${formatNumber(goalPlan.currentTicket)}원` : "데이터 없음"} />
+            <label className="mock-field"><span>테이블 수</span><input min="0" onChange={(event) => setTableCount(Number(event.target.value))} placeholder="예: 15" type="number" value={tableCount || ""} /></label>
+            <InfoLine label="일 평균 테이블 회전" value={goalPlan.dailyTableTurnover === null ? "테이블 수 입력 필요" : `${goalPlan.dailyTableTurnover.toLocaleString("ko-KR", { maximumFractionDigits: 2 })}회`} />
+            <p className="plain-text">카드사·마스킹 카드값을 기준으로 계산한 내부 관리 지표입니다.</p>
           </div>
           <div className="goal-form-card">
             <h3>N개월 뒤 목표</h3>
             <label className="mock-field"><span>목표까지 개월 수</span><input max="12" min="1" onChange={(event) => setGoalMonths(Number(event.target.value))} type="number" value={goalMonths} /></label>
-            <label className="mock-field"><span>목표 순매출</span><input min="0" onChange={(event) => setTargetSales(Number(event.target.value))} type="number" value={targetSales} /></label>
-            <label className="mock-field"><span>목표 건당 결제액</span><input min="1" onChange={(event) => setTargetTicket(Number(event.target.value))} type="number" value={targetTicket} /></label>
-            <InfoLine label="필요 결제건수" value={`${formatNumber(goalPlan.targetPayments)}건`} />
-            <InfoLine label="월평균 추가 결제" value={`${formatNumber(goalPlan.monthlyAdditionalPayments)}건`} />
+            <label className="mock-field"><span>목표 매출</span><input min="0" onChange={(event) => setTargetSales(Number(event.target.value))} type="number" value={targetSales} /></label>
+            <label className="mock-field"><span>목표 객단가</span><input min="1" onChange={(event) => setTargetTicket(Number(event.target.value))} type="number" value={targetTicket} /></label>
+            <label className="mock-field"><span>목표 재방문률(%)</span><input max="100" min="0" onChange={(event) => setTargetReturnRate(Number(event.target.value))} type="number" value={targetReturnRate} /></label>
+            <InfoLine label="필요 고객수" value={`${formatNumber(goalPlan.targetCustomers)}명`} />
+            <InfoLine label="목표 신규고객" value={`${formatNumber(goalPlan.targetNewCustomers)}명`} />
+            <InfoLine label="목표 재방문고객" value={`${formatNumber(goalPlan.targetReturningCustomers)}명`} />
+            <InfoLine label="월평균 추가 고객" value={`${formatNumber(goalPlan.monthlyAdditionalCustomers)}명`} />
+            <InfoLine label="목표 일 평균 회전" value={goalPlan.targetDailyTableTurnover === null ? "테이블 수 입력 필요" : `${goalPlan.targetDailyTableTurnover.toLocaleString("ko-KR", { maximumFractionDigits: 2 })}회`} />
           </div>
         </div>
         <div className="goal-chart-grid" aria-label="월별 목표 매출과 결제건수">
@@ -2324,19 +2417,19 @@ function SalesPage() {
               <strong>{row.label}</strong>
               <div className="goal-bars">
                 <span className="goal-bar pink" style={{ width: `${Math.max(2, targetSales ? (row.sales / Math.max(targetSales, goalPlan.currentSales, 1)) * 100 : 2)}%` }} />
-                <span className="goal-bar teal" style={{ width: `${Math.max(2, goalPlan.targetPayments ? (row.payments / Math.max(goalPlan.targetPayments, goalPlan.currentPayments, 1)) * 100 : 2)}%` }} />
+                <span className="goal-bar teal" style={{ width: `${Math.max(2, goalPlan.targetCustomers ? (row.customers / Math.max(goalPlan.targetCustomers, goalPlan.currentCustomers, 1)) * 100 : 2)}%` }} />
               </div>
               <div className="goal-month-values">
                 <span>매출 {formatNumber(row.sales)}원</span>
-                <span>결제 {formatNumber(row.payments)}건</span>
-                <span>{row.label === "현재" ? "기준" : `+${formatNumber(Math.max(0, row.payments - goalPlan.currentPayments))}건`}</span>
+                <span>고객 {formatNumber(row.customers)}명 · 신규 {formatNumber(row.newCustomers)}명 · 재방문 {formatNumber(row.returningCustomers)}명</span>
+                <span>{row.label === "현재" ? "기준" : `+${formatNumber(Math.max(0, row.customers - goalPlan.currentCustomers))}명`}</span>
               </div>
             </div>
           ))}
         </div>
         <div className="ad-estimate-card">
           <label className="mock-field"><span>참고 획득비용(CAC)</span><input min="0" onChange={(event) => setReferenceCac(Number(event.target.value))} type="number" value={referenceCac} /></label>
-          <InfoLine label="월평균 추가 결제" value={`${formatNumber(goalPlan.monthlyAdditionalPayments)}건`} />
+          <InfoLine label="월평균 추가 고객" value={`${formatNumber(goalPlan.monthlyAdditionalCustomers)}명`} />
           <InfoLine label="참고 광고비" value={`${formatNumber(goalPlan.estimatedMonthlyBudget)}원/월`} />
         </div>
       </section>

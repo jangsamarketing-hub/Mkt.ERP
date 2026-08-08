@@ -45,7 +45,7 @@ export async function GET(request: Request) {
     const overallEnd = buckets.at(-1)?.end ?? buckets[0].end;
     const supabase = getSupabaseAdmin();
 
-    const [storeResult, csvResult, jsonResult, salesResult] = await Promise.all([
+    const [storeResult, csvResult, jsonResult, salesResult, searchAdSnapshotResult] = await Promise.all([
       supabase.from("erp_stores").select("id,name,manager_name,category,region,naver_mid").neq("lifecycle_status", "archived").order("name"),
       supabase
         .from("erp_place_csv_uploads")
@@ -64,8 +64,14 @@ export async function GET(request: Request) {
         .select("store_id,transaction_date,net_sales,net_payment_count")
         .gte("transaction_date", overallStart)
         .lte("transaction_date", overallEnd),
+      supabase
+        .from("erp_searchad_account_snapshots")
+        .select("store_id,captured_at,biz_money_balance,balance_status")
+        .eq("balance_status", "available")
+        .not("biz_money_balance", "is", null)
+        .order("captured_at", { ascending: false }),
     ]);
-    const firstError = storeResult.error ?? csvResult.error ?? jsonResult.error ?? salesResult.error;
+    const firstError = storeResult.error ?? csvResult.error ?? jsonResult.error ?? salesResult.error ?? searchAdSnapshotResult.error;
     if (firstError) throw firstError;
 
     const csvSnapshots: PlaceSnapshot[] = (csvResult.data ?? []).map((upload) => {
@@ -99,6 +105,10 @@ export async function GET(request: Request) {
     }));
     const snapshots: PlaceSnapshot[] = [...csvSnapshots, ...jsonSnapshots.filter((snapshot): snapshot is Exclude<typeof snapshot, null> => Boolean(snapshot))];
     const salesRows = salesResult.data ?? [];
+    const latestBalanceByStore = new Map<string, number>();
+    for (const snapshot of searchAdSnapshotResult.data ?? []) {
+      if (!latestBalanceByStore.has(snapshot.store_id)) latestBalanceByStore.set(snapshot.store_id, Number(snapshot.biz_money_balance));
+    }
 
     const stores = (storeResult.data ?? []).map((store) => {
       const storeSnapshots = snapshots.filter((snapshot) => snapshot.storeId === store.id);
@@ -122,6 +132,7 @@ export async function GET(request: Request) {
         previousInflow: inflowBuckets.at(-2) ?? null,
         currentSales: salesBuckets.at(-1) ?? null,
         previousSales: salesBuckets.at(-2) ?? null,
+        bizMoney: latestBalanceByStore.get(store.id) ?? null,
       };
     });
 

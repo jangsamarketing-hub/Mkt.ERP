@@ -68,10 +68,16 @@ export async function GET(request: Request) {
       hourlyQuery = hourlyQuery.lte("transaction_date", end);
     }
 
-    const [importResult, summaryResult, hourlyResult] = await Promise.all([importQuery, summaryQuery, hourlyQuery]);
-    if (importResult.error) throw importResult.error;
-    if (summaryResult.error) throw summaryResult.error;
-    if (hourlyResult.error) throw hourlyResult.error;
+    let selectedCustomerQuery = supabase.from("erp_card_transactions").select("card_issuer,masked_card_display").eq("store_id", storeId).eq("transaction_type", "approval").not("masked_card_display", "is", null);
+    let priorCustomerQuery = supabase.from("erp_card_transactions").select("card_issuer,masked_card_display").eq("store_id", storeId).eq("transaction_type", "approval").not("masked_card_display", "is", null);
+    if (start) {
+      selectedCustomerQuery = selectedCustomerQuery.gte("transaction_date", start);
+      priorCustomerQuery = priorCustomerQuery.lt("transaction_date", start);
+    }
+    if (end) selectedCustomerQuery = selectedCustomerQuery.lte("transaction_date", end);
+    const [importResult, summaryResult, hourlyResult, selectedCustomerResult, priorCustomerResult] = await Promise.all([importQuery, summaryQuery, hourlyQuery, selectedCustomerQuery, priorCustomerQuery]);
+    const firstError = importResult.error ?? summaryResult.error ?? hourlyResult.error ?? selectedCustomerResult.error ?? priorCustomerResult.error;
+    if (firstError) throw firstError;
 
     const daily = summaryResult.data ?? [];
     const totalSales = daily.reduce((sum, row) => sum + Number(row.net_sales ?? 0), 0);
@@ -94,6 +100,12 @@ export async function GET(request: Request) {
       hourMap.set(hour, current);
     });
 
+    const customerKey = (row: { card_issuer: string | null; masked_card_display: string | null }) => row.masked_card_display ? `${row.card_issuer ?? "unknown"}:${row.masked_card_display}` : null;
+    const selectedCustomers = new Set((selectedCustomerResult.data ?? []).map(customerKey).filter((value): value is string => Boolean(value)));
+    const priorCustomers = new Set((priorCustomerResult.data ?? []).map(customerKey).filter((value): value is string => Boolean(value)));
+    const returningCustomerCount = [...selectedCustomers].filter((key) => priorCustomers.has(key)).length;
+    const newCustomerCount = selectedCustomers.size - returningCustomerCount;
+
     return NextResponse.json({
       imports: importResult.data ?? [],
       daily,
@@ -106,6 +118,14 @@ export async function GET(request: Request) {
         netSales: totalSales,
         netPaymentCount,
         amountPerPayment: netPaymentCount > 0 ? Math.round(totalSales / netPaymentCount) : null,
+      },
+      customerMetrics: {
+        identifiableCustomerCount: selectedCustomers.size,
+        newCustomerCount,
+        returningCustomerCount,
+        returningRate: selectedCustomers.size ? Number(((returningCustomerCount / selectedCustomers.size) * 100).toFixed(1)) : null,
+        averageCustomerTicket: selectedCustomers.size ? Math.round(totalSales / selectedCustomers.size) : null,
+        basis: "card_mask",
       },
     });
   } catch (error) {
