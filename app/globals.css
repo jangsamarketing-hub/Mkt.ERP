@@ -3322,6 +3322,16 @@ a {
 .public-task-list > div { display: grid; grid-template-columns: 72px 1fr auto; gap: 12px; align-items: center; padding: 16px; }
 .public-task-list span { color: #18774d; font-size: 13px; font-weight: 800; }
 .public-task-list em { color: #41668e; font-size: 13px; font-style: normal; }
+.public-work-week { margin-top: 18px; }
+.public-work-week h3 { margin: 0 0 8px; color: #183661; font-size: 16px; }
+.public-work-table { overflow: hidden; border: 1px solid #dfe8f3; border-radius: 10px; background: #fff; }
+.public-work-head, .public-work-row { display: grid; grid-template-columns: 124px minmax(0, 1fr) 76px; gap: 12px; align-items: center; padding: 13px 16px; }
+.public-work-head { background: #f4f8fc; color: #607899; font-size: 12px; font-weight: 800; }
+.public-work-row { border-top: 1px solid #edf2f7; color: #38516e; font-size: 14px; }
+.public-work-row strong { color: #17345e; }
+.public-work-row em { justify-self: start; border-radius: 999px; padding: 4px 8px; font-size: 12px; font-style: normal; font-weight: 800; }
+.public-work-row em.done { background: #dcfce7; color: #18774d; }
+.public-work-row em.pending { background: #fff3da; color: #a15c00; }
 .public-empty { margin: 0; padding: 28px 16px; border: 1px dashed #c8d7ec; border-radius: 14px; color: #607899; }
 .public-store-footer { color: #7185a1; text-align: center; font-size: 13px; padding: 34px 0 4px; }
 .public-information-form { display: grid; gap: 16px; padding: 22px; border: 1px solid #d9e3f3; border-radius: 18px; background: #fff; }
@@ -3338,4 +3348,7 @@ a {
   .public-metric-grid { grid-template-columns: 1fr; }
   .public-task-list > div { grid-template-columns: 1fr auto; }
   .public-task-list span { grid-column: 1 / -1; }
+  .public-work-head, .public-work-row { grid-template-columns: 84px minmax(0, 1fr); padding: 12px; }
+  .public-work-head span:last-child, .public-work-row em { grid-column: 2; }
+  .public-work-row em { justify-self: start; }
 }
