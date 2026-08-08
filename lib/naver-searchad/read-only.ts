@@ -88,10 +88,28 @@ async function requestSearchAd<T>(customerId: string, credentials: SearchAdCrede
   return response.json() as Promise<T>;
 }
 
-async function requestOptionalBalance(customerId: string) {
-  // The official report API does not document a common balance endpoint for every account.
-  // Keep the value explicitly unavailable until the pilot account proves an approved endpoint.
-  return { balance: null, status: "unavailable" as const, raw: {} };
+type BizMoneyResponse = {
+  bizmoney?: unknown;
+  bizMoney?: unknown;
+};
+
+async function requestOptionalBalance(customerId: string, credentials: SearchAdCredentials) {
+  try {
+    // SearchAd billing is a separate, read-only endpoint from campaign statistics.
+    const payload = await requestSearchAd<BizMoneyResponse>(customerId, credentials, "/billing/bizmoney");
+    const balance = numberOrNull(payload.bizmoney ?? payload.bizMoney);
+    if (balance === null) {
+      return { balance: null, status: "failed" as const, raw: { responseShape: Object.keys(payload) } };
+    }
+    return { balance, status: "available" as const, raw: { bizmoney: balance } };
+  } catch (error) {
+    // A billing permission issue must not prevent campaign metrics from being saved.
+    return {
+      balance: null,
+      status: "failed" as const,
+      raw: { error: error instanceof Error ? error.message.slice(0, 300) : "Balance request failed" },
+    };
+  }
 }
 
 function chunk<T>(items: T[], size: number) {
@@ -140,7 +158,7 @@ export async function fetchSearchAdReadOnlySnapshot(customerId: string, statDate
     } satisfies SearchAdCampaignDailyStat;
   });
 
-  const balance = await requestOptionalBalance(customerId);
+  const balance = await requestOptionalBalance(customerId, credentials);
   return {
     customerId,
     campaigns: rows,
