@@ -43,6 +43,7 @@ type StoreRow = {
     sales: number | null;
   };
   weeklyInflow: number[];
+  weeklyInflowRaw?: Array<number | null>;
   weeklySales?: Array<number | null>;
   weeklyTasks: [number, number, number, number];
   memo: string;
@@ -489,7 +490,7 @@ function getDashboardSignal(current: number | null, previous: number | null, his
 }
 
 function getStoreSignal(store: StoreRow): Signal {
-  const inflow = getDashboardSignal(store.naverInflow, store.previous.naverInflow, store.weeklyInflow);
+  const inflow = getDashboardSignal(store.naverInflow, store.previous.naverInflow, store.weeklyInflowRaw ?? store.weeklyInflow);
   const sales = getDashboardSignal(store.sales, store.previous.sales, store.weeklySales ?? []);
   if (inflow === "red" || sales === "red") return "red";
   if (inflow === "yellow" || sales === "yellow") return "yellow";
@@ -914,17 +915,6 @@ function TaskWeeks({ values, onClick }: { values: [number, number, number, numbe
 }
 
 function Sidebar({ activeView, setView }: { activeView: ViewId; setView: (view: ViewId) => void }) {
-  const { selectedStore } = useStoreRegistry();
-
-  const openPublicStorePage = (destination: "report" | "infor") => {
-    const naverMid = selectedStore?.naverMid?.trim() ?? "";
-    if (!/^\d{1,20}$/.test(naverMid)) {
-      setView("store");
-      return;
-    }
-    window.open(`/store/${encodeURIComponent(naverMid)}/${destination}`, "_blank", "noopener,noreferrer");
-  };
-
   return (
     <aside className="sidebar">
       <div className="brand">
@@ -938,11 +928,7 @@ function Sidebar({ activeView, setView }: { activeView: ViewId; setView: (view: 
             <button
               className={`clean-nav-link ${activeView === item.id ? "active" : ""}`}
               key={item.id}
-              onClick={() => {
-                if (item.id === "owner") return openPublicStorePage("report");
-                if (item.id === "questionnaire") return openPublicStorePage("infor");
-                setView(item.id);
-              }}
+              onClick={() => setView(item.id)}
               type="button"
             >
               <Icon size={16} />
@@ -951,6 +937,10 @@ function Sidebar({ activeView, setView }: { activeView: ViewId; setView: (view: 
           );
         })}
       </nav>
+      <div className="sidebar-account">
+        <span>관리자 계정</span>
+        <LogoutButton />
+      </div>
     </aside>
   );
 }
@@ -1228,6 +1218,7 @@ function Dashboard({
           sales: placeStore.previousSales,
         },
         weeklyInflow: placeStore.inflowBuckets.map((value) => value ?? 0),
+        weeklyInflowRaw: placeStore.inflowBuckets,
         weeklySales: placeStore.salesBuckets,
         weeklyTasks: base?.weeklyTasks ?? [0, 0, 0, 0],
         memo: base?.memo ?? "데이터 연결 대기",
@@ -2964,7 +2955,6 @@ function HomePageContent() {
     <div className="erp-shell">
       <Sidebar activeView={activeView} setView={navigateTo} />
       <main className="main">
-        <LogoutButton />
         {storeRegistryError && <p className="registry-error">매장 원장 연결 오류: {storeRegistryError}</p>}
         {content}
       </main>

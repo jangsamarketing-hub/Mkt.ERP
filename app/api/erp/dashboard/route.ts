@@ -46,7 +46,7 @@ export async function GET(request: Request) {
     const supabase = getSupabaseAdmin();
 
     const [storeResult, csvResult, jsonResult, salesResult] = await Promise.all([
-      supabase.from("erp_stores").select("id,name,manager_name,category,region,naver_mid").order("name"),
+      supabase.from("erp_stores").select("id,name,manager_name,category,region,naver_mid").neq("lifecycle_status", "archived").order("name"),
       supabase
         .from("erp_place_csv_uploads")
         .select("store_id,period_start,period_end,summary,uploaded_at")
