@@ -499,7 +499,7 @@ const weeklyTasks: TaskItem[] = [
 
 function formatNumber(value: number | null, suffix = "") {
   if (value === null) return "데이터 없음";
-  return `${value.toLocaleString("ko-KR")}${suffix}`;
+  return `${Math.max(0, Math.floor(value)).toLocaleString("ko-KR")}${suffix}`;
 }
 
 function getSignal(current: number | null, previous: number | null): Signal {
@@ -915,13 +915,14 @@ function SignalButton({
   onClick: () => void;
 }) {
   const signal = getSignal(value, previous);
+  const lowBalance = label === "잔액" && value !== null && value <= 100_000;
   return (
     <button className="signal-button" onClick={onClick} type="button">
       <span className="signal-label">
         <i className={`dot ${signal}`} />
         {label}
       </span>
-      <strong>{formatNumber(value, suffix)}</strong>
+      <strong className={lowBalance ? "low-balance" : undefined}>{formatNumber(value, suffix)}</strong>
       <em>전주 대비 {getDiffLabel(value, previous)}</em>
     </button>
   );
@@ -1561,7 +1562,7 @@ function AdPage() {
         {status && <p className="plain-text">{status}</p>}
       </section>
       <div className="detail-grid">
-        <MetricCard label="비즈머니 잔액" value={data?.latestSnapshot?.balance_status === "available" ? `${Math.round(data.latestSnapshot.biz_money_balance ?? 0).toLocaleString("ko-KR")}원` : "API 검증 필요"} tone={data?.latestSnapshot?.balance_status === "available" ? "green" : "yellow"} />
+        <MetricCard label="비즈머니 잔액" value={data?.latestSnapshot?.balance_status === "available" ? `${Math.max(0, Math.floor(data.latestSnapshot.biz_money_balance ?? 0)).toLocaleString("ko-KR")}원` : "API 검증 필요"} tone={data?.latestSnapshot?.balance_status === "available" ? (Number(data.latestSnapshot.biz_money_balance ?? 0) <= 100_000 ? "red" : "green") : "yellow"} />
         <MetricCard label="노출수" value={total ? total.impressions.toLocaleString("ko-KR") : "데이터 없음"} />
         <MetricCard label="클릭수" value={total ? total.clicks.toLocaleString("ko-KR") : "데이터 없음"} />
         <MetricCard label="광고비 / 평균 CPC" value={total ? `${Math.round(total.spend).toLocaleString("ko-KR")}원 / ${total.averageCpc ? `${Math.round(total.averageCpc).toLocaleString("ko-KR")}원` : "미지원"}` : "데이터 없음"} />

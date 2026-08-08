@@ -1431,6 +1431,10 @@ a {
   color: #fff;
 }
 
+.signal-button strong.low-balance {
+  color: #dc2626;
+}
+
 .chart-summary-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
