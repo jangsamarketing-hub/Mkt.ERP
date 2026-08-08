@@ -983,7 +983,9 @@ export function StoreInfoPage({
         <div className="filter-row">
           <button className="btn btn-light" onClick={onBack} type="button">뒤로가기</button>
           <button className="btn btn-light" onClick={resetProfile} type="button">신규 매장</button>
-          <button className="btn btn-light" disabled={creating || !selectedStoreId} onClick={() => onArchiveStore?.(selectedStoreId)} type="button">보관</button>
+          <button className="btn btn-light" disabled={creating || !selectedStoreId} onClick={() => {
+            if (window.confirm("이 매장을 업체 목록에서 삭제할까요? 기존 업로드 데이터는 보존되며, 관리자만 나중에 복구할 수 있습니다.")) onArchiveStore?.(selectedStoreId);
+          }} type="button">목록에서 삭제</button>
           <button className="btn btn-primary" disabled={profileSaving} onClick={saveProfile} type="button">{profileSaving ? "저장 중" : "저장"}</button>
         </div>
       </div>

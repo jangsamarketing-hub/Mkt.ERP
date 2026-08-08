@@ -484,8 +484,12 @@ a {
   background: var(--gray);
 }
 
+.dot.blue {
+  background: #2563eb;
+}
+
 .dot.green {
-  background: var(--green);
+  background: #2563eb;
 }
 
 .dot.red {
@@ -499,6 +503,12 @@ a {
 
 .dot.gray {
   background: var(--gray);
+}
+
+.week-with-signal {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .signal-metric {

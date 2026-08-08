@@ -27,7 +27,7 @@ import {
 } from "lucide-react";
 
 type ViewId = "dashboard" | "ad" | "inflow" | "sales" | "adminDaily" | "daily" | "tasks" | "owner" | "store" | "questionnaire" | "weeklyFlow";
-type Signal = "green" | "yellow" | "red" | "gray";
+type Signal = "blue" | "green" | "yellow" | "red" | "gray";
 
 type StoreRow = {
   id: string;
@@ -475,9 +475,25 @@ function formatNumber(value: number | null, suffix = "") {
 function getSignal(current: number | null, previous: number | null): Signal {
   if (current === null || previous === null || previous === 0) return "gray";
   const rate = ((current - previous) / previous) * 100;
-  if (rate <= -10) return "red";
-  if (rate <= -5) return "yellow";
-  return "green";
+  if (rate < 0) return "yellow";
+  return "blue";
+}
+
+function getDashboardSignal(current: number | null, previous: number | null, history: Array<number | null>): Signal {
+  if (current === null || previous === null || previous === 0) return "gray";
+  if (current >= previous) return "blue";
+  const priorValues = history.slice(0, -1).filter((value): value is number => value !== null);
+  const priorAverage = priorValues.length ? priorValues.reduce((sum, value) => sum + value, 0) / priorValues.length : null;
+  return priorAverage !== null && current < priorAverage ? "red" : "yellow";
+}
+
+function getStoreSignal(store: StoreRow): Signal {
+  const inflow = getDashboardSignal(store.naverInflow, store.previous.naverInflow, store.weeklyInflow);
+  const sales = getDashboardSignal(store.sales, store.previous.sales, []);
+  if (inflow === "red" || sales === "red") return "red";
+  if (inflow === "yellow" || sales === "yellow") return "yellow";
+  if (inflow === "blue" || sales === "blue") return "blue";
+  return "gray";
 }
 
 function getDiffLabel(current: number | null, previous: number | null) {
@@ -1303,13 +1319,13 @@ function Dashboard({
         {importStatus && <span className="applied-date">{importStatus}</span>}
         <div className="legend">
           <span>
-            <i className="dot green" /> 상승/유지
+            <i className="dot blue" /> 상승/유지
           </span>
           <span>
-            <i className="dot yellow" /> 5% 이상 하락
+            <i className="dot yellow" /> 전주 대비 하락
           </span>
           <span>
-            <i className="dot red" /> 10% 이상 하락
+            <i className="dot red" /> 전주·최근 3주 평균 대비 하락
           </span>
           <span>
             <i className="dot gray" /> 데이터 없음
@@ -1339,7 +1355,10 @@ function Dashboard({
             {dashboardRows.map((store) => (
               <tr key={store.id}>
                 <td>
-                  <span className={getWeekClass(store.week)}>{store.week}</span>
+                  <span className="week-with-signal">
+                    <i aria-label={getStoreSignal(store) === "gray" ? "비교 데이터 없음" : getStoreSignal(store) === "blue" ? "상승 또는 유지" : getStoreSignal(store) === "yellow" ? "전주 대비 하락" : "전주 및 최근 평균 대비 하락"} className={`dot ${getStoreSignal(store)}`} />
+                    <span className={getWeekClass(store.week)}>{store.week}</span>
+                  </span>
                 </td>
                 <td>
                   <button className="text-link" onClick={() => openStoreView(store.id, "store")} type="button">
