@@ -1438,12 +1438,31 @@ a {
 }
 
 .combo-chart-grid {
+  position: relative;
   display: grid;
-  grid-template-columns: repeat(30, minmax(18px, 1fr));
+  grid-template-columns: repeat(30, minmax(0, 1fr));
   align-items: end;
-  gap: 6px;
+  gap: 2px;
   min-height: 220px;
+  overflow: hidden;
   border-bottom: 1px solid #dbe4f0;
+}
+
+.combo-payment-line {
+  position: absolute;
+  inset: 6% 0 6% 0;
+  z-index: 1;
+  width: 100%;
+  height: 88%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.combo-payment-line polyline {
+  fill: none;
+  stroke: #10b981;
+  stroke-width: 0.65;
+  vector-effect: non-scaling-stroke;
 }
 
 .combo-day {
@@ -1452,6 +1471,7 @@ a {
   align-items: end;
   justify-items: center;
   height: 220px;
+  min-width: 0;
   cursor: crosshair;
 }
 
@@ -1478,6 +1498,8 @@ a {
 }
 
 .combo-day i {
+  position: relative;
+  z-index: 0;
   width: 100%;
   min-height: 10px;
   border-radius: 4px 4px 0 0;
@@ -1486,6 +1508,7 @@ a {
 
 .combo-day b {
   position: absolute;
+  z-index: 2;
   width: 7px;
   height: 7px;
   border: 2px solid #10b981;
@@ -1498,6 +1521,9 @@ a {
   bottom: -22px;
   color: #64748b;
   font-size: 10px;
+  max-width: 44px;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 

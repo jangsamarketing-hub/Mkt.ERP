@@ -750,6 +750,13 @@ function SalesComboChart({ points }: { points: SalesChartPoint[] }) {
 
   const hovered = points.find((point) => point.key === hoveredKey) ?? null;
 
+  const labelEvery = Math.max(1, Math.ceil(points.length / 16));
+  const paymentLine = points.map((row, index) => {
+    const x = points.length === 1 ? 50 : (index / (points.length - 1)) * 100;
+    const y = 100 - (Number(row.netPaymentCount) / maxCount) * 88;
+    return `${x},${y}`;
+  }).join(" ");
+
   return (
     <div className="combo-chart">
       {hovered && (
@@ -759,12 +766,15 @@ function SalesComboChart({ points }: { points: SalesChartPoint[] }) {
           <span>결제 {formatNumber(hovered.netPaymentCount)}건</span>
         </div>
       )}
-      <div className="combo-chart-grid" style={{ gridTemplateColumns: `repeat(${Math.max(1, Math.min(points.length, 31))}, minmax(18px, 1fr))` }}>
-        {points.map((row) => (
+      <div className="combo-chart-grid" style={{ gridTemplateColumns: `repeat(${Math.max(1, points.length)}, minmax(0, 1fr))` }}>
+        <svg aria-hidden="true" className="combo-payment-line" preserveAspectRatio="none" viewBox="0 0 100 100">
+          <polyline points={paymentLine} />
+        </svg>
+        {points.map((row, index) => (
           <div className="combo-day" key={row.key} onMouseEnter={() => setHoveredKey(row.key)} onMouseLeave={() => setHoveredKey(null)} tabIndex={0} onFocus={() => setHoveredKey(row.key)} onBlur={() => setHoveredKey(null)}>
             <i style={{ height: `${Math.max(4, (Number(row.netSales) / maxSales) * 100)}%` }} />
-            <b style={{ bottom: `${Math.max(8, (Number(row.netPaymentCount) / maxCount) * 88)}px` }} />
-            <span>{row.label}</span>
+            <b style={{ bottom: `${Math.max(8, (Number(row.netPaymentCount) / maxCount) * 88)}%` }} />
+            {index % labelEvery === 0 && <span>{row.label}</span>}
           </div>
         ))}
       </div>
