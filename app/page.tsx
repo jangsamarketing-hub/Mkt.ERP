@@ -946,10 +946,15 @@ function TaskWeeks({ values, onClick }: { values: [number, number, number, numbe
 function Sidebar({ activeView, setView }: { activeView: ViewId; setView: (view: ViewId) => void }) {
   return (
     <aside className="sidebar">
-      <div className="brand">
+      <button
+        aria-label="장사 ERP 홈으로 이동"
+        className="brand brand-home-button"
+        onClick={() => setView("dashboard")}
+        type="button"
+      >
         <div className="brand-mark">장사</div>
         <strong>ERP</strong>
-      </div>
+      </button>
       <nav className="clean-nav">
         {navItems.map((item) => {
           const Icon = item.icon;
