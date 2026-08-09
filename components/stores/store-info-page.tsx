@@ -704,14 +704,19 @@ export function StoreInfoPage({
 
   const syncStoreTasks = async (storeId: string) => {
     const existingResponse = await fetch(`/api/erp/stores/${encodeURIComponent(storeId)}/work-updates`);
-    const existingPayload = await existingResponse.json() as { updates?: { id: string }[]; error?: string };
+    const existingPayload = await existingResponse.json() as {
+      updates?: { id: string; task_week?: number | null; task_date?: string | null; title?: string | null }[];
+      error?: string;
+    };
     if (!existingResponse.ok) throw new Error(existingPayload.error ?? "사장님 업무 목록을 불러오지 못했습니다.");
-    await Promise.all((existingPayload.updates ?? []).map(async (update) => {
-      const response = await fetch(`/api/erp/stores/${encodeURIComponent(storeId)}/work-updates?id=${encodeURIComponent(update.id)}`, { method: "DELETE" });
-      if (!response.ok) throw new Error("기존 업무 목록을 교체하지 못했습니다.");
-    }));
     const tasks = storeTasks.length ? storeTasks : hydrateTasks(weeklyTasks);
-    await Promise.all(tasks.map(async (task) => {
+    const taskKey = (week: number | null | undefined, date: string | null | undefined, title: string | null | undefined) => `${week ?? ""}|${date ?? ""}|${title?.trim() ?? ""}`;
+    const existingTaskKeys = new Set((existingPayload.updates ?? []).map((update) => taskKey(update.task_week, update.task_date, update.title)));
+    const missingTasks = tasks.filter((task) => !existingTaskKeys.has(taskKey(task.week, task.date, task.name)));
+
+    // 이미 작성된 업무의 메모·사진 증빙은 절대 교체하지 않습니다.
+    // 새로 추가된 템플릿 업무만 원장에 보충합니다.
+    await Promise.all(missingTasks.map(async (task) => {
       const response = await fetch(`/api/erp/stores/${encodeURIComponent(storeId)}/work-updates`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
