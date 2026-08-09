@@ -2438,21 +2438,80 @@ function SalesPage() {
   );
 }
 
+type StoreWorkUpdate = {
+  id?: string;
+  task_week: number | null;
+  task_date: string | null;
+  title: string;
+  status: string;
+  evidence_text: string | null;
+  evidence_urls: string[];
+};
+
 function TasksPage() {
-  const [selectedTask, setSelectedTask] = useState<TaskItem>(weeklyTasks[1]);
-  const completed = weeklyTasks.filter((task) => task.status === "완료").length;
+  const { selectedStoreId, selectedStore } = useStoreRegistry();
+  const [updates, setUpdates] = useState<StoreWorkUpdate[]>([]);
+  const [selectedId, setSelectedId] = useState<string>("");
+  const [memo, setMemo] = useState("");
+  const [urls, setUrls] = useState("");
+  const [status, setStatus] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const loadUpdates = async () => {
+    if (!selectedStoreId) return;
+    setStatus("업무 목록을 불러오는 중입니다.");
+    try {
+      const response = await fetch(`/api/erp/stores/${encodeURIComponent(selectedStoreId)}/work-updates`);
+      const payload = await response.json() as { updates?: StoreWorkUpdate[]; error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "업무 목록을 불러오지 못했습니다.");
+      const list = payload.updates ?? [];
+      setUpdates(list);
+      setSelectedId(list[0]?.id ?? "");
+      setStatus(list.length ? "" : "등록된 업무가 없습니다. 매장 정보의 주차별 업무 리스트를 저장해주세요.");
+    } catch (error) { setStatus(error instanceof Error ? error.message : "업무 목록을 불러오지 못했습니다."); }
+  };
+
+  useEffect(() => { void loadUpdates(); }, [selectedStoreId]);
+
+  const selectedTask = updates.find((item) => item.id === selectedId) ?? updates[0];
+  useEffect(() => {
+    setMemo(selectedTask?.evidence_text ?? "");
+    setUrls((selectedTask?.evidence_urls ?? []).join("\n"));
+  }, [selectedTask?.id]);
+
+  const saveWork = async () => {
+    if (!selectedStoreId || !selectedTask?.id) return;
+    setSaving(true); setStatus("");
+    try {
+      const evidenceUrls = urls.split(/\r?\n/).map((value) => value.trim()).filter(Boolean);
+      const response = await fetch(`/api/erp/stores/${encodeURIComponent(selectedStoreId)}/work-updates`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: selectedTask.id, title: selectedTask.title, taskWeek: selectedTask.task_week,
+          taskDate: selectedTask.task_date, evidenceText: memo, evidenceUrls, owner: "company", publicVisible: true,
+        }),
+      });
+      const payload = await response.json() as { update?: StoreWorkUpdate; error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "업무 기록을 저장하지 못했습니다.");
+      setUpdates((current) => current.map((item) => item.id === selectedTask.id ? (payload.update ?? item) : item));
+      setStatus(memo.trim() || evidenceUrls.length ? "기록 저장 완료 · 사장님 보고서에 기입완료로 표시됩니다." : "기록이 비어 있어 미기입 상태입니다.");
+    } catch (error) { setStatus(error instanceof Error ? error.message : "업무 기록을 저장하지 못했습니다."); }
+    finally { setSaving(false); }
+  };
+
+  const completed = updates.filter((task) => Boolean(task.evidence_text || task.evidence_urls?.length)).length;
 
   return (
     <>
-      <PageHeader title="주간 업무 작성 화면" description="매니저는 업무 상세를 등록/수정하고, 사장님은 보고서에서 읽기 전용으로 확인합니다." />
+      <PageHeader title="주간 업무 작성 화면" description="기록을 저장하면 자동으로 기입완료 처리되고 사장님 보고서에 표시됩니다." />
       <StoreContextBar />
       <section className="panel">
         <h2>전체 업무 목록표</h2>
         <div className="task-summary-grid">
-          <MetricCard label="전체 업무" value={`${weeklyTasks.length}개`} />
-          <MetricCard label="완료" value={`${completed}개`} tone="green" />
-          <MetricCard label="미완료" value={`${weeklyTasks.length - completed}개`} />
-          <MetricCard label="현재 주차" value="4주차" tone="red" />
+          <MetricCard label="전체 업무" value={`${updates.length}개`} />
+          <MetricCard label="기입완료" value={`${completed}개`} tone="green" />
+          <MetricCard label="미기입" value={`${updates.length - completed}개`} />
+          <MetricCard label="선택 매장" value={selectedStore?.name ?? "매장 선택 필요"} tone="red" />
         </div>
       </section>
       <section className="panel">
@@ -2485,14 +2544,14 @@ function TasksPage() {
                 {week}주차 <span>{getWeekRange(week)}</span>
               </h2>
               <div className="task-table">
-                {weeklyTasks
-                  .filter((task) => task.week === week)
+                {updates
+                  .filter((task) => task.task_week === week)
                   .map((task) => (
-                    <button className="task-row-button" key={`${task.date}-${task.name}`} onClick={() => setSelectedTask(task)} type="button">
-                      <span>{task.date}</span>
-                      <span>{task.day}</span>
-                      <strong>{task.name}</strong>
-                      <em>{task.status}</em>
+                    <button className="task-row-button" key={task.id} onClick={() => setSelectedId(task.id ?? "")} type="button">
+                      <span>{task.task_date ?? "날짜 미정"}</span>
+                      <span>{task.task_date ? new Intl.DateTimeFormat("ko-KR", { weekday: "short" }).format(new Date(`${task.task_date}T00:00:00`)) : ""}</span>
+                      <strong>{task.title}</strong>
+                      <em>{task.evidence_text || task.evidence_urls?.length ? "기입완료" : "미기입"}</em>
                     </button>
                   ))}
               </div>
@@ -2501,18 +2560,17 @@ function TasksPage() {
         </div>
         <aside className="panel task-detail">
           <h2>업무 상세 등록/확인</h2>
-          <InfoLine label="날짜" value={`${selectedTask.date} (${selectedTask.day})`} />
-          <InfoLine label="작업 이름" value={selectedTask.name} />
-          <InfoLine label="상태" value={selectedTask.status} />
+          <InfoLine label="날짜" value={selectedTask?.task_date ?? "업무 선택 필요"} />
+          <InfoLine label="작업 이름" value={selectedTask?.title ?? "업무 선택 필요"} />
+          <InfoLine label="상태" value={selectedTask && (selectedTask.evidence_text || selectedTask.evidence_urls?.length) ? "기입완료" : "미기입"} />
           <label className="mock-field">
             <span>매니저 메모</span>
-            <textarea readOnly value="여기에 업무 처리 내용, 변경 사항, 사장님에게 보여줄 설명을 입력합니다." />
+            <textarea disabled={!selectedTask} onChange={(event) => setMemo(event.target.value)} placeholder="업무 처리 내용, 변경 사항, 사장님께 보여줄 설명을 입력하세요." value={memo} />
           </label>
-          <div className="mock-photo-grid">
-            <div>사진 첨부 1</div>
-            <div>사진 첨부 2</div>
-          </div>
-          <p className="plain-text">내부 관리자는 수정 가능, 사장님 보고서에서는 읽기 전용으로 표시됩니다.</p>
+          <label className="mock-field"><span>증빙 링크 (한 줄에 하나)</span><textarea disabled={!selectedTask} onChange={(event) => setUrls(event.target.value)} placeholder="사진 또는 문서 링크를 한 줄에 하나씩 입력하세요." value={urls} /></label>
+          <button className="btn btn-primary" disabled={!selectedTask || saving} onClick={saveWork} type="button">{saving ? "저장 중" : "기록 저장"}</button>
+          {status && <p className="plain-text">{status}</p>}
+          <p className="plain-text">기록 또는 링크가 있으면 자동으로 기입완료 처리됩니다. 사장님 보고서에서는 읽기 전용으로 표시됩니다.</p>
         </aside>
       </section>
     </>
