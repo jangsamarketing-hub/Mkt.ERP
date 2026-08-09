@@ -181,3 +181,9 @@ git status --short
   - 재계약은 이전 주기를 덮어쓰지 않고 다음 cycle을 추가한다.
   - `erp_store_work_updates.contract_cycle_id`로 업무 증빙을 계약 주기에 귀속한다.
   - 초안 migration이므로 원격 Supabase schema 비교와 백업 후에만 적용한다.
+
+## 12. 일일업무 화면 전환 상태
+
+- `components/daily-tasks/daily-tasks-page.tsx`는 기존 localStorage 업무함을 제거하고 `erp_store_work_updates` 조회/기입 화면으로 교체했다.
+- 선택 날짜에 예정된 회사 업무를 매장별로 묶어 보여주며, 메모 또는 증빙 링크 저장 시 자동 `기입완료`가 된다.
+- 현 단계는 관리자 전체 조회다. 담당 매니저별 서버 권한 제한과 4주 cycle 자동 생성은 다음 구현 단위다.
