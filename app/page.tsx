@@ -769,7 +769,7 @@ function chartSalesAxis(maxValue: number) {
 function CompactVerticalBars({ values, labels, tone = "blue" }: { values: number[]; labels: string[]; tone?: "blue" | "yellow" }) {
   const max = Math.max(...values, 1);
   return (
-    <div className="compact-vertical-bars">
+    <div className="compact-vertical-bars" style={{ gridTemplateColumns: `repeat(${Math.max(values.length, 1)}, minmax(0, 1fr))` }}>
       {values.map((value, index) => (
         <div className="compact-vertical-item" key={`${labels[index]}-${value}`} title={`${labels[index]} · ${value.toLocaleString("ko-KR")}원`}>
           <strong>{value ? shortWon(value) : "-"}</strong>
@@ -2402,8 +2402,8 @@ function SalesPage() {
           <div className="goal-form-card">
             <h3>N개월 뒤 목표</h3>
             <label className="mock-field"><span>목표까지 개월 수</span><input max="12" min="1" onChange={(event) => setGoalMonths(Number(event.target.value))} type="number" value={goalMonths} /></label>
-            <label className="mock-field"><span>목표 매출</span><input min="0" onChange={(event) => setTargetSales(Number(event.target.value))} type="number" value={targetSales} /></label>
-            <label className="mock-field"><span>목표 객단가</span><input min="1" onChange={(event) => setTargetTicket(Number(event.target.value))} type="number" value={targetTicket} /></label>
+            <label className="mock-field"><span>목표 매출</span><input inputMode="numeric" onChange={(event) => setTargetSales(Number(event.target.value.replace(/[^\d]/g, "")) || 0)} placeholder="0" value={targetSales ? formatNumber(targetSales) : ""} /></label>
+            <label className="mock-field"><span>목표 객단가</span><input inputMode="numeric" onChange={(event) => setTargetTicket(Number(event.target.value.replace(/[^\d]/g, "")) || 0)} placeholder="0" value={targetTicket ? formatNumber(targetTicket) : ""} /></label>
             <label className="mock-field"><span>목표 재방문률(%)</span><input max="100" min="0" onChange={(event) => setTargetReturnRate(Number(event.target.value))} type="number" value={targetReturnRate} /></label>
             <InfoLine label="필요 고객수" value={`${formatNumber(goalPlan.targetCustomers)}명`} />
             <InfoLine label="목표 신규고객" value={`${formatNumber(goalPlan.targetNewCustomers)}명`} />

@@ -349,9 +349,14 @@ export function StoreInfoPage({
   const [selectedWeek, setSelectedWeek] = useState<1 | 2 | 3 | 4>(4);
   const setupItems = setupItemsByMonth[selectedSetupMonth] ?? [];
   const monthlySetupPhotos = setupPhotos.filter((photo) => photo.month === selectedSetupMonth);
-  const publicStoreUid = stores?.find((store) => store.id === selectedStoreId)?.publicUid?.trim() ?? "";
-  // 공개 링크는 네이버 MID가 아니라 우리 원장의 public UID만 사용한다.
-  const publicStoreIdentifier = publicStoreUid;
+  const publicLinkStore = stores?.find((store) => store.id === selectedStoreId);
+  const publicStoreMid = (profile.placeMid || publicLinkStore?.naverMid || "").trim();
+  // 사장님 공유 주소는 매장에 입력한 네이버 플레이스 MID를 우선 사용합니다.
+  // MID가 아직 없을 때만 기존 공개 UID를 하위 호환용으로 사용합니다.
+  const publicStoreUid = publicLinkStore?.publicUid?.trim() ?? "";
+  const publicStoreIdentifier = /^\d{1,20}$/.test(publicStoreMid)
+    ? publicStoreMid
+    : publicStoreUid;
   const ownerReportUrl = useMemo(
     () => publicStoreIdentifier ? `/store/${encodeURIComponent(publicStoreIdentifier)}/report` : "",
     [publicStoreIdentifier],

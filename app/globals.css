@@ -916,12 +916,12 @@ a {
 
 .steps span.active,
 .step-button.complete {
-  background: #16a34a;
+  background: #2563eb;
   color: #fff;
 }
 
 .step-button.partial {
-  background: #f59e0b;
+  background: #2563eb;
   color: #fff;
 }
 
@@ -3479,8 +3479,8 @@ a {
 .public-work-row { border-top: 1px solid #edf2f7; color: #38516e; font-size: 14px; }
 .public-work-row strong { color: #17345e; }
 .public-work-row em { justify-self: start; border-radius: 999px; padding: 4px 8px; font-size: 12px; font-style: normal; font-weight: 800; }
-.public-work-row em.done { background: #dcfce7; color: #18774d; }
-.public-work-row em.pending { background: #fff3da; color: #a15c00; }
+.public-work-row em.done { background: #dbeafe; color: #1d4ed8; }
+.public-work-row em.pending { background: #fee2e2; color: #b91c1c; }
 .public-empty { margin: 0; padding: 28px 16px; border: 1px dashed #c8d7ec; border-radius: 14px; color: #607899; }
 .public-store-footer { color: #7185a1; text-align: center; font-size: 13px; padding: 34px 0 4px; }
 .public-information-form { display: grid; gap: 16px; padding: 22px; border: 1px solid #d9e3f3; border-radius: 18px; background: #fff; }
