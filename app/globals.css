@@ -3072,6 +3072,8 @@ a {
   min-height: 180px;
   padding: 12px 6px 2px;
   border-bottom: 1px solid #dbe4f0;
+  width: 100%;
+  overflow: hidden;
 }
 
 .compact-vertical-bars,
@@ -3086,6 +3088,25 @@ a {
 .stat-pill-grid strong,
 .goal-month-values span {
   font-variant-numeric: tabular-nums;
+}
+
+.compact-vertical-item strong,
+.compact-vertical-item span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-row-button.is-selected {
+  background: #eff6ff;
+  box-shadow: inset 3px 0 0 #2563eb;
+}
+
+.task-detail textarea {
+  min-height: 150px;
+  resize: vertical;
+  white-space: pre-wrap;
 }
 
 .public-work-entry { border-top: 1px solid #e5edf7; }

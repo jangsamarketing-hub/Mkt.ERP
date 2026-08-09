@@ -103,8 +103,8 @@ const sections: InformationSection[] = [
     title: "8. 리뷰·이벤트",
     description: "고객 재방문과 리뷰 동선을 진단합니다.",
     fields: [
-      { key: "reviewEventStatus", label: "리뷰 이벤트 운영 여부" },
-      { key: "reviewBenefit", label: "현재 제공 혜택" },
+      { key: "reviewEventStatus", label: "리뷰 이벤트 운영 여부", multiline: true },
+      { key: "reviewBenefit", label: "현재 제공 혜택", multiline: true },
       { key: "returnVisitMethod", label: "재방문 유도 방식", multiline: true },
       { key: "customerNotes", label: "고객 반응 또는 자주 받는 요청", multiline: true },
     ],

@@ -2456,6 +2456,9 @@ function TasksPage() {
   const [urls, setUrls] = useState("");
   const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
+  const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [newTaskDate, setNewTaskDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [addingTask, setAddingTask] = useState(false);
 
   const loadUpdates = async () => {
     if (!selectedStoreId) return;
@@ -2466,7 +2469,7 @@ function TasksPage() {
       if (!response.ok) throw new Error(payload.error ?? "업무 목록을 불러오지 못했습니다.");
       const list = payload.updates ?? [];
       setUpdates(list);
-      setSelectedId(list[0]?.id ?? "");
+      setSelectedId((current) => list.some((item) => item.id === current) ? current : (list[0]?.id ?? ""));
       setStatus(list.length ? "" : "등록된 업무가 없습니다. 매장 정보의 주차별 업무 리스트를 저장해주세요.");
     } catch (error) { setStatus(error instanceof Error ? error.message : "업무 목록을 불러오지 못했습니다."); }
   };
@@ -2499,6 +2502,27 @@ function TasksPage() {
     finally { setSaving(false); }
   };
 
+  const addWork = async () => {
+    if (!selectedStoreId || !newTaskTitle.trim()) {
+      setStatus("추가할 업무명을 입력해주세요.");
+      return;
+    }
+    setAddingTask(true); setStatus("");
+    try {
+      const response = await fetch(`/api/erp/stores/${encodeURIComponent(selectedStoreId)}/work-updates`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: newTaskTitle.trim(), taskDate: newTaskDate, taskWeek: 1, owner: "company", publicVisible: true }),
+      });
+      const payload = await response.json() as { update?: StoreWorkUpdate; error?: string };
+      if (!response.ok || !payload.update) throw new Error(payload.error ?? "추가 업무를 저장하지 못했습니다.");
+      setUpdates((current) => [payload.update!, ...current]);
+      setSelectedId(payload.update.id ?? "");
+      setNewTaskTitle("");
+      setStatus("추가 업무를 만들었습니다. 처리 내용을 작성하면 사장님 보고서에도 표시됩니다.");
+    } catch (error) { setStatus(error instanceof Error ? error.message : "추가 업무를 저장하지 못했습니다."); }
+    finally { setAddingTask(false); }
+  };
+
   const completed = updates.filter((task) => Boolean(task.evidence_text || task.evidence_urls?.length)).length;
 
   return (
@@ -2516,25 +2540,14 @@ function TasksPage() {
       </section>
       <section className="panel">
         <div className="section-headline">
-          <h2>추가 업무 / 약속 히스토리</h2>
-          <button className="btn btn-primary" type="button">추가 업무 등록</button>
+          <h2>추가 업무 등록</h2>
         </div>
-        <div className="promise-list">
-          {[
-            ["2026-07-12", "사장님 통화", "신메뉴 사진 교체 요청", "2026-07-14까지", "대기중"],
-            ["2026-07-11", "카카오톡", "쿠폰 문구 수정 후 재전달", "2026-07-12까지", "완료"],
-            ["2026-07-09", "내부 메모", "블로그 상위노출 키워드 재확인", "2026-07-15까지", "대기중"],
-          ].map(([date, source, title, due, status]) => (
-            <div className="promise-row" key={`${date}-${title}`}>
-              <span>{date}</span>
-              <strong>{title}</strong>
-              <span>{source}</span>
-              <span>{due}</span>
-              <em>{status}</em>
-            </div>
-          ))}
+        <div className="inline-form">
+          <input aria-label="추가 업무 날짜" onChange={(event) => setNewTaskDate(event.target.value)} type="date" value={newTaskDate} />
+          <input aria-label="추가 업무명" onChange={(event) => setNewTaskTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void addWork(); }} placeholder="사장님 요청, 통화 약속 등 추가할 업무" value={newTaskTitle} />
+          <button className="btn btn-primary" disabled={addingTask} onClick={addWork} type="button">{addingTask ? "추가 중" : "추가 업무 등록"}</button>
         </div>
-        <p className="plain-text">나중에는 통화 녹음 파일을 업로드하면 약속 업무가 자동 생성되는 기능으로 확장합니다.</p>
+        <p className="plain-text">여기서 추가한 업무도 처리 내용을 저장하면 자동으로 기입완료가 되며, 사장님 보고서에 같이 표시됩니다.</p>
       </section>
       <section className="task-layout">
         <div>
@@ -2547,7 +2560,7 @@ function TasksPage() {
                 {updates
                   .filter((task) => task.task_week === week)
                   .map((task) => (
-                    <button className="task-row-button" key={task.id} onClick={() => setSelectedId(task.id ?? "")} type="button">
+                    <button aria-pressed={selectedTask?.id === task.id} className={`task-row-button${selectedTask?.id === task.id ? " is-selected" : ""}`} key={task.id} onClick={() => setSelectedId(task.id ?? "")} type="button">
                       <span>{task.task_date ?? "날짜 미정"}</span>
                       <span>{task.task_date ? new Intl.DateTimeFormat("ko-KR", { weekday: "short" }).format(new Date(`${task.task_date}T00:00:00`)) : ""}</span>
                       <strong>{task.title}</strong>
@@ -2564,13 +2577,13 @@ function TasksPage() {
           <InfoLine label="작업 이름" value={selectedTask?.title ?? "업무 선택 필요"} />
           <InfoLine label="상태" value={selectedTask && (selectedTask.evidence_text || selectedTask.evidence_urls?.length) ? "기입완료" : "미기입"} />
           <label className="mock-field">
-            <span>매니저 메모</span>
-            <textarea disabled={!selectedTask} onChange={(event) => setMemo(event.target.value)} placeholder="업무 처리 내용, 변경 사항, 사장님께 보여줄 설명을 입력하세요." value={memo} />
+            <span>업무 처리 내용</span>
+            <textarea disabled={!selectedTask} onChange={(event) => setMemo(event.target.value)} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key === "Enter") { event.preventDefault(); void saveWork(); } }} placeholder="업무 처리 내용, 변경 사항, 사장님께 보여줄 설명을 입력하세요. Shift+Enter는 줄바꿈, Ctrl+Enter는 저장입니다." value={memo} />
           </label>
           <label className="mock-field"><span>증빙 링크 (한 줄에 하나)</span><textarea disabled={!selectedTask} onChange={(event) => setUrls(event.target.value)} placeholder="사진 또는 문서 링크를 한 줄에 하나씩 입력하세요." value={urls} /></label>
           <button className="btn btn-primary" disabled={!selectedTask || saving} onClick={saveWork} type="button">{saving ? "저장 중" : "기록 저장"}</button>
           {status && <p className="plain-text">{status}</p>}
-          <p className="plain-text">기록 또는 링크가 있으면 자동으로 기입완료 처리됩니다. 사장님 보고서에서는 읽기 전용으로 표시됩니다.</p>
+          <p className="plain-text">완료 버튼은 없습니다. 처리 내용 또는 증빙 링크를 저장하면 자동으로 기입완료가 되며, 사장님 보고서에서는 같은 내용이 읽기 전용으로 표시됩니다.</p>
         </aside>
       </section>
     </>

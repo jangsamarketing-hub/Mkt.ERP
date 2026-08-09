@@ -64,7 +64,7 @@ export function DailyTasksPage({ stores: fallbackStores }: { stores: StoreRow[];
       }));
       const next = results.flat().sort((a, b) => a.storeName.localeCompare(b.storeName, "ko") || (a.task_date ?? "").localeCompare(b.task_date ?? ""));
       setUpdates(next);
-      setSelectedId((current) => next.some((task) => task.id === current) ? current : "");
+      setSelectedId((current) => next.some((task) => task.id === current) ? current : (next.find((task) => task.task_date === selectedDate && task.owner === "company")?.id ?? next[0]?.id ?? ""));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "업무 원장을 불러오지 못했습니다.");
       setUpdates([]);
@@ -167,7 +167,7 @@ export function DailyTasksPage({ stores: fallbackStores }: { stores: StoreRow[];
               <h2>{tasks[0].storeName} <span>담당 {tasks[0].managerName}</span></h2>
               <div className="task-table">
                 {tasks.map((task) => (
-                  <button className="task-row-button" key={task.id} onClick={() => selectTask(task)} type="button">
+                  <button aria-pressed={selectedTask?.id === task.id} className={`task-row-button${selectedTask?.id === task.id ? " is-selected" : ""}`} key={task.id} onClick={() => selectTask(task)} type="button">
                     <span>{task.task_week ? `${task.task_week}주차` : "일정"}</span>
                     <strong>{task.title}</strong>
                     <em>{hasEntry(task) ? "기입완료" : "미기입"}</em>
