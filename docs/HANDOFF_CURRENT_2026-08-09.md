@@ -173,3 +173,11 @@ git status --short
 - 작은 기능 하나당 별도 브랜치/커밋으로 만든다.
 - `supabase/.temp/`와 추적되지 않은 과거 bootstrap migration은 사용자의 파일이므로 임의로 추가/삭제하지 않는다.
 - 배포 전에는 공개 페이지와 관리자 페이지를 각각 확인한다.
+
+## 11. 현재 브랜치의 다음 원장 초안
+
+- `supabase/migrations/20260809110000_store_contract_cycles_draft.sql`
+  - 관리 계약을 28일 단위 `erp_store_contract_cycles`로 보존한다.
+  - 재계약은 이전 주기를 덮어쓰지 않고 다음 cycle을 추가한다.
+  - `erp_store_work_updates.contract_cycle_id`로 업무 증빙을 계약 주기에 귀속한다.
+  - 초안 migration이므로 원격 Supabase schema 비교와 백업 후에만 적용한다.
