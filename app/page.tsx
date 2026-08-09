@@ -954,6 +954,12 @@ function Sidebar({ activeView, setView }: { activeView: ViewId; setView: (view: 
       >
         <div className="brand-mark">장사</div>
         <strong>ERP</strong>
+        <img
+          alt=""
+          aria-hidden="true"
+          className="brand-mascot"
+          src="/brand/pink-penguin-wave.png"
+        />
       </button>
       <nav className="clean-nav">
         {navItems.map((item) => {
@@ -3143,6 +3149,11 @@ function HomePageContent() {
       <main className="main">
         {storeRegistryError && <p className="registry-error">매장 원장 연결 오류: {storeRegistryError}</p>}
         {content}
+        <footer className="app-copyright">
+          <strong>© 2026 장사 ERP</strong>
+          <span>본 사이트의 서비스 구성·디자인·콘텐츠 및 운영 데이터베이스에 관한 권리는 장사 ERP 운영자에게 귀속됩니다.</span>
+          <span>개별 매장 데이터는 관리 목적 외 열람·복제·배포를 금합니다.</span>
+        </footer>
       </main>
     </div>
   );

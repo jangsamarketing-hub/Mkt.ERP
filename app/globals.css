@@ -128,6 +128,27 @@ a {
   line-height: 1;
 }
 
+.brand-mascot {
+  width: 34px;
+  height: 34px;
+  margin-left: auto;
+  object-fit: contain;
+  object-position: center;
+}
+
+.app-copyright {
+  display: grid;
+  gap: 4px;
+  margin: 34px 4px 8px;
+  padding: 18px 20px;
+  border-top: 1px solid #dce5f1;
+  color: #72829a;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.app-copyright strong { color: #314b70; }
+
 .nav-section {
   padding: 14px 12px 4px;
 }
@@ -3496,6 +3517,7 @@ a {
 .public-store-header { display: flex; justify-content: space-between; align-items: center; padding: 15px 18px; font-size: 14px; }
 .public-store-header span { color: #2160cf; font-weight: 800; }
 .public-store-hero { padding: 46px 6px 28px; }
+.public-hero-mascot { display: block; width: 88px; height: 88px; margin: 22px 6px -18px auto; object-fit: contain; object-position: bottom; }
 .public-store-hero p { color: #41668e; margin: 0 0 8px; }
 .public-store-hero h1 { font-size: clamp(30px, 7vw, 46px); margin: 0 0 12px; letter-spacing: -0.04em; }
 .public-store-hero span { color: #607899; font-size: 14px; }
@@ -3522,7 +3544,10 @@ a {
 .public-work-row em.done { background: #dbeafe; color: #1d4ed8; }
 .public-work-row em.pending { background: #fee2e2; color: #b91c1c; }
 .public-empty { margin: 0; padding: 28px 16px; border: 1px dashed #c8d7ec; border-radius: 14px; color: #607899; }
-.public-store-footer { color: #7185a1; text-align: center; font-size: 13px; padding: 34px 0 4px; }
+.public-store-footer { color: #7185a1; text-align: center; font-size: 13px; line-height: 1.7; padding: 34px 0 4px; }
+.public-store-footer strong { color: #223f6d; }
+.public-brand-mascot { width: 42px; height: 42px; object-fit: contain; margin: -12px 8px -12px auto; }
+.public-store-footer::after { content: "© 2026 장사 ERP · 본 사이트의 서비스 구성·디자인·콘텐츠 저작권은 장사 ERP 운영자에게 귀속됩니다."; display: block; margin-top: 8px; font-size: 12px; }
 .public-information-form { display: grid; gap: 16px; padding: 22px; border: 1px solid #d9e3f3; border-radius: 18px; background: #fff; }
 .public-form-notice { margin: 0; padding: 13px; border-radius: 12px; background: #f2f7ff; color: #315b91; font-size: 14px; line-height: 1.6; }
 .public-form-field { display: grid; gap: 8px; font-weight: 700; color: #243f68; }
@@ -3534,10 +3559,14 @@ a {
 
 @media (max-width: 560px) {
   .public-store-shell { width: min(100% - 24px, 880px); padding-top: 12px; }
+  .public-hero-mascot { width: 68px; height: 68px; margin-top: 16px; }
   .public-metric-grid { grid-template-columns: 1fr; }
   .public-task-list > div { grid-template-columns: 1fr auto; }
   .public-task-list span { grid-column: 1 / -1; }
   .public-work-head, .public-work-row { grid-template-columns: 84px minmax(0, 1fr); padding: 12px; }
+  .app-copyright { margin-inline: 0; padding-inline: 14px; }
+  .brand-mascot { width: 30px; height: 30px; }
+  .public-brand-mascot { width: 34px; height: 34px; }
   .public-work-head span:last-child, .public-work-row em { grid-column: 2; }
   .public-work-row em { justify-self: start; }
 }

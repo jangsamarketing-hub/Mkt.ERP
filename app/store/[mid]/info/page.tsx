@@ -11,6 +11,7 @@ export default async function PublicInformationPage({ params }: PageProps) {
   return (
     <main className="public-store-shell public-info-shell">
       <header className="public-store-header"><span>장사ERP</span><strong>정보안내문</strong></header>
+      <img alt="핑크 펭귄 장사 ERP 마스코트" className="public-hero-mascot" src="/brand/pink-penguin-portrait.png" />
       <section className="public-store-hero">
         <p>마케팅 시작 전 사전 정보 수집</p>
         <h1>{store.name}</h1>

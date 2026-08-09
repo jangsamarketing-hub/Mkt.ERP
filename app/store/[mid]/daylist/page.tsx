@@ -87,6 +87,7 @@ export default async function PublicDaylistPage({ params }: PageProps) {
   return (
     <main className="public-store-shell">
       <header className="public-store-header"><span>장사 ERP</span><strong>사장님 업무 보고서</strong></header>
+      <img alt="핑크 펭귄 장사 ERP 마스코트" className="public-hero-mascot" src="/brand/pink-penguin-wave.png" />
       <section className="public-store-hero">
         <p>{store.category ?? "음식점"}{store.region ? ` · ${store.region}` : ""}</p>
         <h1>{store.name}의 관리 리포트</h1>

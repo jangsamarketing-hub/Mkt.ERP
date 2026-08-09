@@ -19,6 +19,13 @@
 | 손을 든 투명 배경 펭귄 | `C:/Users/PC/Downloads/누끼 핑크2.png` |
 | 정면 펭귄 | `C:/Users/PC/Downloads/누끼 핑크1.png` |
 
+웹 서비스용 복사본은 아래 경로에 관리한다.
+
+- `public/brand/pink-penguin-wave.png`
+- `public/brand/pink-penguin-portrait.png`
+- `public/brand/review-game-reference.png`
+- `public/brand/review-game-side-reference.png`
+
 ## 적용 원칙
 
 1. 현재 내부 관리 ERP의 정보 밀도와 가독성은 유지한다. 펭귄은 상단 브랜드, 빈 상태, 성공 상태 등 보조적 위치부터 사용한다.
