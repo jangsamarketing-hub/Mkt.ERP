@@ -75,8 +75,16 @@ export async function GET(request: Request) {
       priorCustomerQuery = priorCustomerQuery.lt("transaction_date", start);
     }
     if (end) selectedCustomerQuery = selectedCustomerQuery.lte("transaction_date", end);
-    const [importResult, summaryResult, hourlyResult, selectedCustomerResult, priorCustomerResult] = await Promise.all([importQuery, summaryQuery, hourlyQuery, selectedCustomerQuery, priorCustomerQuery]);
-    const firstError = importResult.error ?? summaryResult.error ?? hourlyResult.error ?? selectedCustomerResult.error ?? priorCustomerResult.error;
+    const latestImportQuery = supabase
+      .from("erp_card_imports")
+      .select("uploaded_at")
+      .eq("store_id", storeId)
+      .eq("status", "ready")
+      .order("uploaded_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const [importResult, summaryResult, hourlyResult, selectedCustomerResult, priorCustomerResult, latestImportResult] = await Promise.all([importQuery, summaryQuery, hourlyQuery, selectedCustomerQuery, priorCustomerQuery, latestImportQuery]);
+    const firstError = importResult.error ?? summaryResult.error ?? hourlyResult.error ?? selectedCustomerResult.error ?? priorCustomerResult.error ?? latestImportResult.error;
     if (firstError) throw firstError;
 
     const daily = summaryResult.data ?? [];
@@ -108,6 +116,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       imports: importResult.data ?? [],
+      lastUploadedAt: latestImportResult.data?.uploaded_at ?? null,
       daily,
       hourly: [...hourMap.entries()].map(([hour, value]) => ({ hour, ...value })),
       weekdays: [1, 2, 3, 4, 5, 6, 0].map((weekday) => ({

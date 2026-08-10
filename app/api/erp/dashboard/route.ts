@@ -105,9 +105,9 @@ export async function GET(request: Request) {
     }));
     const snapshots: PlaceSnapshot[] = [...csvSnapshots, ...jsonSnapshots.filter((snapshot): snapshot is Exclude<typeof snapshot, null> => Boolean(snapshot))];
     const salesRows = salesResult.data ?? [];
-    const latestBalanceByStore = new Map<string, number>();
+    const latestBalanceByStore = new Map<string, { balance: number; capturedAt: string }>();
     for (const snapshot of searchAdSnapshotResult.data ?? []) {
-      if (!latestBalanceByStore.has(snapshot.store_id)) latestBalanceByStore.set(snapshot.store_id, Number(snapshot.biz_money_balance));
+      if (!latestBalanceByStore.has(snapshot.store_id)) latestBalanceByStore.set(snapshot.store_id, { balance: Number(snapshot.biz_money_balance), capturedAt: snapshot.captured_at });
     }
 
     const stores = (storeResult.data ?? []).map((store) => {
@@ -132,7 +132,8 @@ export async function GET(request: Request) {
         previousInflow: inflowBuckets.at(-2) ?? null,
         currentSales: salesBuckets.at(-1) ?? null,
         previousSales: salesBuckets.at(-2) ?? null,
-        bizMoney: latestBalanceByStore.get(store.id) ?? null,
+        bizMoney: latestBalanceByStore.get(store.id)?.balance ?? null,
+        bizMoneyUpdatedAt: latestBalanceByStore.get(store.id)?.capturedAt ?? null,
       };
     });
 

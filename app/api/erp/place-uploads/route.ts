@@ -132,9 +132,25 @@ export async function GET(request: Request) {
     if (start) jsonQuery = jsonQuery.gte("period_start", start);
     if (end) jsonQuery = jsonQuery.lte("period_end", end);
 
-    const [csvResult, jsonResult] = await Promise.all([query, jsonQuery]);
-    if (csvResult.error) throw csvResult.error;
-    if (jsonResult.error) throw jsonResult.error;
+    const latestCsvQuery = supabase
+      .from("erp_place_csv_uploads")
+      .select("uploaded_at")
+      .eq("store_id", storeId)
+      .eq("status", "ready")
+      .order("uploaded_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const latestJsonQuery = supabase
+      .from("erp_naver_place_json_imports")
+      .select("uploaded_at")
+      .eq("store_id", storeId)
+      .eq("status", "ready")
+      .order("uploaded_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const [csvResult, jsonResult, latestCsvResult, latestJsonResult] = await Promise.all([query, jsonQuery, latestCsvQuery, latestJsonQuery]);
+    const firstError = csvResult.error ?? jsonResult.error ?? latestCsvResult.error ?? latestJsonResult.error;
+    if (firstError) throw firstError;
     const uploads = csvResult.data ?? [];
     const uploadIds = (uploads ?? []).map((upload) => upload.id);
 
@@ -178,7 +194,10 @@ export async function GET(request: Request) {
     jsonUploads.filter((upload): upload is NonNullable<typeof upload> => Boolean(upload)).forEach((upload) => {
       latestByPeriod.set(`${upload.period_start}:${upload.period_end}`, upload as PlaceUploadResponse);
     });
-    return NextResponse.json({ uploads: [...latestByPeriod.values()].sort((left, right) => right.period_start.localeCompare(left.period_start)) });
+    const lastUploadedAt = [latestCsvResult.data?.uploaded_at, latestJsonResult.data?.uploaded_at]
+      .filter((value): value is string => Boolean(value))
+      .sort((left, right) => right.localeCompare(left))[0] ?? null;
+    return NextResponse.json({ uploads: [...latestByPeriod.values()].sort((left, right) => right.period_start.localeCompare(left.period_start)), lastUploadedAt });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Place upload query failed" },

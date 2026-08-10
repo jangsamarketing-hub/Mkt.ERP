@@ -33,7 +33,7 @@ export async function GET(request: Request) {
       conversions: sum.conversions + (numberOrNull(row.conversions) ?? 0),
     }), { impressions: 0, clicks: 0, spend: 0, rankWeight: 0, rankImpressions: 0, conversions: 0 });
     return NextResponse.json({
-      config: configResult.data ?? { enabled: false, daily_sync_times: ["06:10:00"], timezone: "Asia/Seoul" },
+      config: configResult.data ?? { enabled: false, daily_sync_times: ["11:00:00"], timezone: "Asia/Seoul" },
       latestSnapshot: latestSnapshotResult.data ?? null,
       totals: {
         ...totals,

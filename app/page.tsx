@@ -35,6 +35,7 @@ type StoreRow = {
   name: string;
   manager: string;
   bizMoney: number | null;
+  bizMoneyUpdatedAt?: string | null;
   naverInflow: number | null;
   sales: number | null;
   previous: {
@@ -345,6 +346,7 @@ type DashboardPlaceStore = {
   currentSales: number | null;
   previousSales: number | null;
   bizMoney: number | null;
+  bizMoneyUpdatedAt?: string | null;
 };
 
 type GoldenKeywordJob = {
@@ -370,6 +372,7 @@ type ServerCardImport = {
 
 type ServerCardData = {
   imports: ServerCardImport[];
+  lastUploadedAt?: string | null;
   daily: Array<{
     transaction_date: string;
     net_sales: number;
@@ -507,6 +510,21 @@ function getSignal(current: number | null, previous: number | null): Signal {
   const rate = ((current - previous) / previous) * 100;
   if (rate < 0) return "yellow";
   return "blue";
+}
+
+function formatUpdatedAt(value: string | null | undefined) {
+  if (!value) return "업로드 없음";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "업로드 없음";
+  return new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    year: "2-digit",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date).replace(/\. /g, ".").replace(/\.$/, "");
 }
 
 function getDashboardSignal(current: number | null, previous: number | null, history: Array<number | null>): Signal {
@@ -906,12 +924,14 @@ function SignalButton({
   value,
   previous,
   suffix,
+  updatedAt,
   onClick,
 }: {
   label: string;
   value: number | null;
   previous: number | null;
   suffix?: string;
+  updatedAt?: string | null;
   onClick: () => void;
 }) {
   const signal = getSignal(value, previous);
@@ -923,7 +943,7 @@ function SignalButton({
         {label}
       </span>
       <strong className={lowBalance ? "low-balance" : undefined}>{formatNumber(value, suffix)}</strong>
-      <em>전주 대비 {getDiffLabel(value, previous)}</em>
+      <em>{updatedAt ? `갱신 ${formatUpdatedAt(updatedAt)}` : `전주 대비 ${getDiffLabel(value, previous)}`}</em>
     </button>
   );
 }
@@ -1250,6 +1270,7 @@ function Dashboard({
         name: placeStore.name,
         manager: placeStore.managerName || base?.manager || "미배정",
         bizMoney: placeStore.bizMoney,
+        bizMoneyUpdatedAt: placeStore.bizMoneyUpdatedAt ?? null,
         naverInflow: placeStore.currentInflow,
         sales: placeStore.currentSales,
         previous: {
@@ -1437,6 +1458,7 @@ function Dashboard({
                     previous={store.previous.bizMoney}
                     suffix="원"
                     value={store.bizMoney}
+                    updatedAt={store.bizMoneyUpdatedAt}
                     onClick={() => openStoreView(store.id, "ad")}
                   />
                 </td>
@@ -1500,7 +1522,7 @@ function AdPage() {
   const [status, setStatus] = useState("");
   const [syncing, setSyncing] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
-  const [dailyTimes, setDailyTimes] = useState("06:10");
+  const [dailyTimes, setDailyTimes] = useState("11:00");
 
   const load = async () => {
     if (!selectedStoreId) return;
@@ -1510,7 +1532,7 @@ function AdPage() {
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "검색광고 데이터를 불러오지 못했습니다.");
       setData(payload);
-      setDailyTimes((payload.config?.daily_sync_times ?? ["06:10:00"]).map((time: string) => time.slice(0, 5)).join(", "));
+      setDailyTimes((payload.config?.daily_sync_times ?? ["11:00:00"]).map((time: string) => time.slice(0, 5)).join(", "));
       setStatus(payload.campaigns?.length ? "저장된 읽기 전용 성과 데이터입니다." : "Customer ID 연결 후 수동 갱신 또는 다음 자동 수집에서 데이터가 표시됩니다.");
     } catch (error) {
       setData(null);
@@ -1562,18 +1584,18 @@ function AdPage() {
         <div className="section-headline">
           <div>
             <h2>{selectedStore?.name ?? "매장 선택 필요"} · 읽기 전용 수집</h2>
-            <p className="plain-text">기본은 하루 1회입니다. 향후 최대 3개 시간까지 미리 설정할 수 있지만, 현재 Vercel 자동 수집은 06:10 한 번만 실행합니다.</p>
+            <p className="plain-text">현재 자동 수집은 매일 오전 11시(한국시간)에 실행됩니다. 마지막 갱신: {formatUpdatedAt(data?.latestSnapshot?.captured_at)} · 오후 5시 자동 갱신은 별도 스케줄러 연결 후 활성화됩니다.</p>
           </div>
           <button className="btn btn-primary" disabled={!selectedStoreId || syncing} onClick={syncNow} type="button">{syncing ? "수집 중" : "지금 읽기 전용 갱신"}</button>
         </div>
         <div className="filter-row">
-          <label className="store-field"><span>자동 수집 시간 (한국시간, 쉼표로 최대 3개)</span><input value={dailyTimes} onChange={(event) => setDailyTimes(event.target.value)} placeholder="06:10" /></label>
+          <label className="store-field"><span>자동 수집 시간 (한국시간, 현재 하루 1회)</span><input value={dailyTimes} onChange={(event) => setDailyTimes(event.target.value)} placeholder="11:00" /></label>
           <button className="btn btn-light" disabled={!selectedStoreId || savingConfig} onClick={saveConfig} type="button">{savingConfig ? "저장 중" : "자동 수집 설정 저장"}</button>
         </div>
         {status && <p className="plain-text">{status}</p>}
       </section>
       <div className="detail-grid">
-        <MetricCard label="비즈머니 잔액" value={data?.latestSnapshot?.balance_status === "available" ? `${Math.max(0, Math.floor(data.latestSnapshot.biz_money_balance ?? 0)).toLocaleString("ko-KR")}원` : "API 검증 필요"} tone={data?.latestSnapshot?.balance_status === "available" ? (Number(data.latestSnapshot.biz_money_balance ?? 0) <= 100_000 ? "red" : "green") : "yellow"} />
+        <MetricCard label={`비즈머니 잔액 · ${formatUpdatedAt(data?.latestSnapshot?.captured_at)}`} value={data?.latestSnapshot?.balance_status === "available" ? `${Math.max(0, Math.floor(data.latestSnapshot.biz_money_balance ?? 0)).toLocaleString("ko-KR")}원` : "API 검증 필요"} tone={data?.latestSnapshot?.balance_status === "available" ? (Number(data.latestSnapshot.biz_money_balance ?? 0) <= 100_000 ? "red" : "green") : "yellow"} />
         <MetricCard label="노출수" value={total ? total.impressions.toLocaleString("ko-KR") : "데이터 없음"} />
         <MetricCard label="클릭수" value={total ? total.clicks.toLocaleString("ko-KR") : "데이터 없음"} />
         <MetricCard label="광고비 / 평균 CPC" value={total ? `${Math.round(total.spend).toLocaleString("ko-KR")}원 / ${total.averageCpc ? `${Math.round(total.averageCpc).toLocaleString("ko-KR")}원` : "미지원"}` : "데이터 없음"} />
@@ -1614,6 +1636,7 @@ function InflowPage() {
   const [appliedRangeEnd, setAppliedRangeEnd] = useState(today);
   const [queryVersion, setQueryVersion] = useState(0);
   const [placeCsvUploads, setPlaceCsvUploads] = useState<ServerPlaceUpload[]>([]);
+  const [placeLastUploadedAt, setPlaceLastUploadedAt] = useState<string | null>(null);
   const [placeDataStatus, setPlaceDataStatus] = useState("");
   const [goldenKeywordJobs, setGoldenKeywordJobs] = useState<GoldenKeywordJob[]>([]);
   const [activeAnalysisRows, setActiveAnalysisRows] = useState<KeywordAnalysisRow[]>([]);
@@ -1635,6 +1658,10 @@ function InflowPage() {
   const hasSelectedStore = Boolean(selectedInflowStoreId);
   const selectedUploads = placeCsvUploads;
   const hasPlaceData = selectedUploads.length > 0;
+  const latestPlaceUploadedAt = useMemo(
+    () => selectedUploads.reduce<string | null>((latest, upload) => !latest || upload.uploaded_at > latest ? upload.uploaded_at : latest, null),
+    [selectedUploads],
+  );
   const uploadedSummary = useMemo(() => selectedUploads.reduce((summary, upload) => ({
     placeInflow: summary.placeInflow + (upload.summary.placeInflow ?? 0),
     reservationOrder: summary.reservationOrder + (upload.summary.reservationOrder ?? 0),
@@ -1677,6 +1704,7 @@ function InflowPage() {
   useEffect(() => {
     if (!selectedInflowStoreId) {
       setPlaceCsvUploads([]);
+      setPlaceLastUploadedAt(null);
       setPlaceDataStatus("");
       return;
     }
@@ -1685,14 +1713,16 @@ function InflowPage() {
     const params = new URLSearchParams({ storeId: selectedInflowStoreId, start: appliedRangeStart, end: appliedRangeEnd });
     fetch(`/api/erp/place-uploads?${params.toString()}`)
       .then((response) => response.ok ? response.json() : response.json().then((payload) => Promise.reject(new Error(payload.error ?? "query failed"))))
-      .then((payload: { uploads?: ServerPlaceUpload[] }) => {
+      .then((payload: { uploads?: ServerPlaceUpload[]; lastUploadedAt?: string | null }) => {
         if (!active) return;
         setPlaceCsvUploads(payload.uploads ?? []);
+        setPlaceLastUploadedAt(payload.lastUploadedAt ?? null);
         setPlaceDataStatus(payload.uploads?.length ? `${appliedRangeStart}~${appliedRangeEnd} · ${payload.uploads.length}개 원본 데이터 조회 완료` : "선택한 기간에 데이터가 없습니다.");
       })
       .catch((error: Error) => {
         if (!active) return;
         setPlaceCsvUploads([]);
+        setPlaceLastUploadedAt(null);
         setPlaceDataStatus(error.message);
       });
     return () => {
@@ -1887,6 +1917,7 @@ function InflowPage() {
             <span>MID {selectedInflowStore.naverMid || "미등록"}</span>
             <span>담당자 {selectedInflowStore.managerName || "미배정"}</span>
             <span>관리 {selectedInflowStore.contractPeriodWeeks ?? 4}주</span>
+            <span>최종 업로드 {formatUpdatedAt(placeLastUploadedAt ?? latestPlaceUploadedAt)}</span>
           </>
         ) : (
           <span>매장을 선택하면 유입 데이터가 표시됩니다.</span>
@@ -2297,7 +2328,7 @@ function SalesPage() {
         ) : <span>매장을 선택하면 매출 데이터가 표시됩니다.</span>}
       </div>
       <div className="success-banner">
-        <span>{salesUploadMessage || "원본 XLS는 매장별 비공개 저장소와 Supabase 원장에 함께 보관됩니다."}</span>
+        <span>{salesUploadMessage || "원본 XLS는 매장별 비공개 저장소와 Supabase 원장에 함께 보관됩니다."} · 최종 업로드 {formatUpdatedAt(cardData?.lastUploadedAt ?? cardData?.imports.reduce<string | null>((latest, item) => !latest || item.uploaded_at > latest ? item.uploaded_at : latest, null))}</span>
       </div>
       <div className="filter-row toolbar">
         <span>시작일:</span>
