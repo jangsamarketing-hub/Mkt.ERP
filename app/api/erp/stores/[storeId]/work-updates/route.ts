@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { authenticateRequest, authFailureResponse } from "@/lib/auth/request";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { activeFourWeekStart, buildFourWeekWorkPlan, workPlanDate } from "@/lib/work-plan";
 
 type RouteContext = { params: Promise<{ storeId: string }> };
 const STATUSES = new Set(["pending", "in_progress", "completed", "blocked"]);
@@ -41,11 +42,51 @@ function normalizeUpdate(body: Record<string, unknown>) {
   };
 }
 
+async function ensureCurrentFourWeekPlan(storeId: string) {
+  const supabase = getSupabaseAdmin();
+  const { data: store, error: storeError } = await supabase
+    .from("erp_stores")
+    .select("management_start_date,lifecycle_status")
+    .eq("id", storeId)
+    .maybeSingle();
+  if (storeError) throw storeError;
+  if (!store?.management_start_date || store.lifecycle_status === "archived") return;
+
+  const cycleStart = activeFourWeekStart(String(store.management_start_date));
+  const planned = buildFourWeekWorkPlan();
+  const cycleEnd = workPlanDate(cycleStart, { week: 4, dayOffset: 27, title: "" });
+  const { data: existing, error: existingError } = await supabase
+    .from("erp_store_work_updates")
+    .select("task_date,task_week,title")
+    .eq("store_id", storeId)
+    .gte("task_date", cycleStart)
+    .lte("task_date", cycleEnd);
+  if (existingError) throw existingError;
+
+  const existingKeys = new Set((existing ?? []).map((item) => `${item.task_week}|${item.task_date}|${item.title}`));
+  const missing = planned
+    .map((item) => ({
+      store_id: storeId,
+      task_week: item.week,
+      task_date: workPlanDate(cycleStart, item),
+      title: item.title,
+      owner: "company",
+      status: "pending",
+      public_visible: true,
+      evidence_urls: [],
+    }))
+    .filter((item) => !existingKeys.has(`${item.task_week}|${item.task_date}|${item.title}`));
+  if (!missing.length) return;
+  const { error: insertError } = await supabase.from("erp_store_work_updates").insert(missing);
+  if (insertError) throw insertError;
+}
+
 export async function GET(request: Request, context: RouteContext) {
   const { storeId } = await context.params;
   const auth = authenticateRequest(request, { storeId, roles: ["admin", "staff", "owner"] });
   if (!auth.ok) return authFailureResponse(auth);
   try {
+    await ensureCurrentFourWeekPlan(storeId);
     const { data, error } = await getSupabaseAdmin()
       .from("erp_store_work_updates")
       .select("id,setup_item_id,task_date,task_week,title,owner,status,public_visible,evidence_text,evidence_urls,completed_at,created_at,updated_at")
