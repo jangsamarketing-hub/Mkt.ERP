@@ -2498,6 +2498,7 @@ function TasksPage() {
   const [urls, setUrls] = useState("");
   const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
+  const [uploadingEvidence, setUploadingEvidence] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskDate, setNewTaskDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [addingTask, setAddingTask] = useState(false);
@@ -2542,6 +2543,24 @@ function TasksPage() {
       setStatus(memo.trim() || evidenceUrls.length ? "기록 저장 완료 · 사장님 보고서에 기입완료로 표시됩니다." : "기록이 비어 있어 미기입 상태입니다.");
     } catch (error) { setStatus(error instanceof Error ? error.message : "업무 기록을 저장하지 못했습니다."); }
     finally { setSaving(false); }
+  };
+
+  const uploadWorkEvidence = async (file: File | null) => {
+    if (!file || !selectedStoreId || !selectedTask?.id) return;
+    setUploadingEvidence(true); setStatus("");
+    try {
+      const formData = new FormData();
+      formData.set("file", file);
+      formData.set("workUpdateId", selectedTask.id);
+      const response = await fetch(`/api/erp/stores/${encodeURIComponent(selectedStoreId)}/work-evidence`, {
+        method: "POST", body: formData,
+      });
+      const payload = await response.json() as { storageUrl?: string; error?: string };
+      if (!response.ok || !payload.storageUrl) throw new Error(payload.error ?? "사진 업로드에 실패했습니다.");
+      setUrls((current) => [...current.split(/\r?\n/).map((value) => value.trim()).filter(Boolean), payload.storageUrl!].join("\n"));
+      setStatus("사진을 올렸습니다. 기록 저장을 누르면 사장님 보고서에 함께 반영됩니다.");
+    } catch (error) { setStatus(error instanceof Error ? error.message : "사진 업로드에 실패했습니다."); }
+    finally { setUploadingEvidence(false); }
   };
 
   const addWork = async () => {
@@ -2623,7 +2642,8 @@ function TasksPage() {
             <textarea disabled={!selectedTask} onChange={(event) => setMemo(event.target.value)} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key === "Enter") { event.preventDefault(); void saveWork(); } }} placeholder="업무 처리 내용, 변경 사항, 사장님께 보여줄 설명을 입력하세요. Shift+Enter는 줄바꿈, Ctrl+Enter는 저장입니다." value={memo} />
           </label>
           <label className="mock-field"><span>증빙 링크 (한 줄에 하나)</span><textarea disabled={!selectedTask} onChange={(event) => setUrls(event.target.value)} placeholder="사진 또는 문서 링크를 한 줄에 하나씩 입력하세요." value={urls} /></label>
-          <button className="btn btn-primary" disabled={!selectedTask || saving} onClick={saveWork} type="button">{saving ? "저장 중" : "기록 저장"}</button>
+          <label className="mock-field"><span>사진 증빙 추가 (JPG, PNG, WEBP · 10MB 이하)</span><input accept="image/jpeg,image/png,image/webp" disabled={!selectedTask || uploadingEvidence} onChange={(event) => uploadWorkEvidence(event.target.files?.[0] ?? null)} type="file" /></label>
+          <button className="btn btn-primary" disabled={!selectedTask || saving || uploadingEvidence} onClick={saveWork} type="button">{saving ? "저장 중" : "기록 저장"}</button>
           {status && <p className="plain-text">{status}</p>}
           <p className="plain-text">완료 버튼은 없습니다. 처리 내용 또는 증빙 링크를 저장하면 자동으로 기입완료가 되며, 사장님 보고서에서는 같은 내용이 읽기 전용으로 표시됩니다.</p>
         </aside>

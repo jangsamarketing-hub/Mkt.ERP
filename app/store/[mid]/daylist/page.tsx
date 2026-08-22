@@ -64,13 +64,27 @@ export default async function PublicDaylistPage({ params }: PageProps) {
   const recentPayments = dailyRows.reduce((sum, row) => sum + Number(row.net_payment_count ?? 0), 0);
   const summary = (inflowResult.data?.summary ?? {}) as Record<string, unknown>;
   const placeInflow = typeof summary.placeInflow === "number" ? summary.placeInflow : null;
-  const workItems: PublicStoreWorkItem[] = (workResult.data ?? []).map((item) => ({
-    id: item.id,
-    week: Number(item.task_week ?? 1),
-    date: item.task_date,
-    title: item.title,
-    evidenceText: item.evidence_text,
-    evidenceUrls: Array.isArray(item.evidence_urls) ? item.evidence_urls.filter((value): value is string => typeof value === "string") : [],
+  const workItems: PublicStoreWorkItem[] = await Promise.all((workResult.data ?? []).map(async (item) => {
+    const sourceUrls = Array.isArray(item.evidence_urls)
+      ? item.evidence_urls.filter((value): value is string => typeof value === "string")
+      : [];
+    const evidenceUrls = await Promise.all(sourceUrls.map(async (url) => {
+      const prefix = "storage://erp-private-uploads/";
+      if (!url.startsWith(prefix)) return url;
+      const { data, error } = await supabase.storage
+        .from("erp-private-uploads")
+        .createSignedUrl(url.slice(prefix.length), 60 * 60);
+      return error || !data?.signedUrl ? "" : data.signedUrl;
+    }));
+
+    return {
+      id: item.id,
+      week: Number(item.task_week ?? 1),
+      date: item.task_date,
+      title: item.title,
+      evidenceText: item.evidence_text,
+      evidenceUrls: evidenceUrls.filter(Boolean),
+    };
   }));
   const writtenCount = workItems.filter((item) => item.evidenceText || item.evidenceUrls.length).length;
   const adRows = adStatsResult.data ?? [];

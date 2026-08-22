@@ -41,6 +41,7 @@ export function DailyTasksPage({ stores: fallbackStores }: { stores: StoreRow[];
   const [urls, setUrls] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState("");
 
   const loadTasks = async () => {
@@ -130,6 +131,29 @@ export function DailyTasksPage({ stores: fallbackStores }: { stores: StoreRow[];
     }
   };
 
+  const uploadEvidence = async (file: File | null) => {
+    if (!file || !selectedTask) return;
+    setUploading(true);
+    setMessage("");
+    try {
+      const formData = new FormData();
+      formData.set("file", file);
+      formData.set("workUpdateId", selectedTask.id);
+      const response = await fetch(`/api/erp/stores/${encodeURIComponent(selectedTask.storeId)}/work-evidence`, {
+        method: "POST",
+        body: formData,
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "사진 업로드에 실패했습니다.");
+      setUrls((current) => [...current.split(/\r?\n/).map((value) => value.trim()).filter(Boolean), payload.storageUrl].join("\n"));
+      setMessage("사진을 올렸습니다. 기입 저장을 누르면 업무 보고서에 반영됩니다.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "사진 업로드에 실패했습니다.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
     <>
       <div className="page-header">
@@ -185,7 +209,9 @@ export function DailyTasksPage({ stores: fallbackStores }: { stores: StoreRow[];
             <div className="info-line"><span>업무</span><strong>{selectedTask.title}</strong></div>
             <label className="mock-field"><span>처리 내용</span><textarea onChange={(event) => setMemo(event.target.value)} placeholder="사장님에게 보여줄 처리 내용과 변경 사항을 입력하세요." value={memo} /></label>
             <label className="mock-field"><span>사진/문서 증빙 링크 (한 줄에 하나)</span><textarea onChange={(event) => setUrls(event.target.value)} placeholder="공유 가능한 사진 또는 문서 링크를 입력하세요." value={urls} /></label>
-            <button className="btn btn-primary" disabled={saving} onClick={saveEntry} type="button">{saving ? "저장 중" : "기입 저장"}</button>
+            <label className="mock-field"><span>사진 증빙 추가 (JPG, PNG, WEBP · 10MB 이하)</span><input accept="image/jpeg,image/png,image/webp" disabled={uploading} onChange={(event) => uploadEvidence(event.target.files?.[0] ?? null)} type="file" /></label>
+            {message ? <p className="plain-text">{message}</p> : null}
+            <button className="btn btn-primary" disabled={saving || uploading} onClick={saveEntry} type="button">{saving ? "저장 중" : "기입 저장"}</button>
           </> : <p className="plain-text">왼쪽에서 업무를 선택하면 처리 내용을 작성할 수 있습니다.</p>}
         </aside>
       </section>
