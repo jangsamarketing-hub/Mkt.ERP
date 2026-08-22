@@ -10,6 +10,16 @@ export const runtime = "nodejs";
 const BUCKET = "erp-private-uploads";
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const BUCKET_ALLOWED_TYPES = [
+  "application/json",
+  "text/csv",
+  "text/plain",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+];
 
 function safeFileName(value: string) {
   return value.replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -46,6 +56,17 @@ export async function POST(request: Request, context: RouteContext) {
 
   if (workError || !workUpdate) {
     return NextResponse.json({ error: "해당 매장 업무를 찾지 못했습니다." }, { status: 404 });
+  }
+
+  // Existing private bucket is also used by import files. Keep it private and
+  // allow task-photo MIME types even before the SQL migration is applied.
+  const { error: bucketError } = await supabase.storage.updateBucket(BUCKET, {
+    public: false,
+    fileSizeLimit: MAX_FILE_SIZE,
+    allowedMimeTypes: BUCKET_ALLOWED_TYPES,
+  });
+  if (bucketError) {
+    return NextResponse.json({ error: `사진 보관소 설정에 실패했습니다: ${bucketError.message}` }, { status: 500 });
   }
 
   const path = `${storeId}/work-evidence/${workUpdateId}/${Date.now()}-${safeFileName(file.name)}`;
