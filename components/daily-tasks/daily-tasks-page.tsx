@@ -35,6 +35,7 @@ export function DailyTasksPage({ stores: fallbackStores }: { stores: StoreRow[];
     ? registry.stores.map((store) => ({ id: store.id, name: store.name, manager: store.managerName ?? "미배정" }))
     : fallbackStores;
   const [selectedDate, setSelectedDate] = useState(seoulDate);
+  const [managerFilter, setManagerFilter] = useState("all");
   const [updates, setUpdates] = useState<TaskWithStore[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [memo, setMemo] = useState("");
@@ -76,9 +77,15 @@ export function DailyTasksPage({ stores: fallbackStores }: { stores: StoreRow[];
 
   useEffect(() => { void loadTasks(); }, [registry.loading, stores.length]);
 
+  const managerOptions = useMemo(
+    () => [...new Set(stores.map((store) => store.manager?.trim()).filter((manager): manager is string => Boolean(manager)))].sort((a, b) => a.localeCompare(b, "ko")),
+    [stores],
+  );
   const todayTasks = useMemo(
-    () => updates.filter((task) => task.task_date === selectedDate && task.owner === "company"),
-    [updates, selectedDate],
+    () => updates.filter((task) => task.task_date === selectedDate
+      && task.owner === "company"
+      && (managerFilter === "all" || task.managerName === managerFilter)),
+    [updates, selectedDate, managerFilter],
   );
   const grouped = useMemo(() => {
     const map = new Map<string, TaskWithStore[]>();
@@ -169,6 +176,10 @@ export function DailyTasksPage({ stores: fallbackStores }: { stores: StoreRow[];
             <p className="plain-text">담당 매장별 업무를 열고 처리 내용을 남기면 사장님 공개 보고서에 같은 내용이 표시됩니다.</p>
           </div>
           <div className="filter-row">
+            <select aria-label="담당자 필터" onChange={(event) => setManagerFilter(event.target.value)} value={managerFilter}>
+              <option value="all">전체 담당자</option>
+              {managerOptions.map((manager) => <option key={manager} value={manager}>{manager}</option>)}
+            </select>
             <input aria-label="업무 날짜" type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} />
             <button className="btn btn-light" disabled={loading} onClick={() => void loadTasks()} type="button">{loading ? "불러오는 중" : "새로고침"}</button>
           </div>
