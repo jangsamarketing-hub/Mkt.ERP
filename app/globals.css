@@ -1419,6 +1419,11 @@ a {
   font-weight: 800;
 }
 
+.sales-upload-table .analysis-head,
+.sales-upload-table .analysis-row {
+  grid-template-columns: minmax(190px, 1.5fr) minmax(200px, 1.2fr) minmax(100px, 0.7fr) auto;
+}
+
 .success-banner {
   display: flex;
   align-items: center;
@@ -1496,6 +1501,41 @@ a {
   color: #64748b;
   font-size: 12px;
   font-weight: 800;
+}
+
+.upload-history-list .upload-source-chip {
+  display: inline-flex;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid #e5eaf1;
+  border-radius: 999px;
+  background: #f8fafc;
+}
+
+.upload-history-list .upload-source-chip > span {
+  border: 0;
+  border-radius: 0;
+  padding: 6px 10px;
+}
+
+.upload-delete-button {
+  border: 0;
+  border-left: 1px solid #fecaca;
+  background: #fff1f2;
+  color: #be123c;
+  cursor: pointer;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.upload-delete-button:hover:not(:disabled) {
+  background: #ffe4e6;
+}
+
+.upload-delete-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .chart-summary-grid strong {

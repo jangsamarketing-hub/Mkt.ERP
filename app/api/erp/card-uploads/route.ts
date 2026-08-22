@@ -145,6 +145,46 @@ export async function GET(request: Request) {
   }
 }
 
+export async function DELETE(request: Request) {
+  const initialAuth = authenticateRequest(request);
+  if (!initialAuth.ok) return authFailureResponse(initialAuth);
+  try {
+    const url = new URL(request.url);
+    const storeId = url.searchParams.get("storeId")?.trim();
+    const importId = url.searchParams.get("importId")?.trim();
+    if (!storeId || !importId) return NextResponse.json({ error: "storeId and importId are required" }, { status: 400 });
+    const storeAuth = authenticateRequest(request, { storeId });
+    if (!storeAuth.ok) return authFailureResponse(storeAuth);
+
+    const supabase = getSupabaseAdmin();
+    const { data: importRow, error: lookupError } = await supabase
+      .from("erp_card_imports")
+      .select("id,store_id,file_name,raw_storage_path")
+      .eq("id", importId)
+      .eq("store_id", storeId)
+      .maybeSingle();
+    if (lookupError) throw lookupError;
+    if (!importRow) return NextResponse.json({ error: "삭제할 여신금융 원본을 찾지 못했습니다." }, { status: 404 });
+
+    const { error: deleteError } = await supabase
+      .from("erp_card_imports")
+      .delete()
+      .eq("id", importId)
+      .eq("store_id", storeId);
+    if (deleteError) throw deleteError;
+
+    if (importRow.raw_storage_path) {
+      await supabase.storage.from(BUCKET).remove([importRow.raw_storage_path]);
+    }
+    return NextResponse.json({ deletedId: importRow.id, fileName: importRow.file_name });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Credit-finance delete failed" },
+      { status: 503 },
+    );
+  }
+}
+
 export async function POST(request: Request) {
   const initialAuth = authenticateRequest(request);
   if (!initialAuth.ok) return authFailureResponse(initialAuth);

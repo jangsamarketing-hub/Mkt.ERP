@@ -331,6 +331,7 @@ type ServerPlaceUpload = {
     diff_count: number | null;
     diff_rate: number | null;
   }>;
+  source: "csv" | "json";
 };
 
 type DashboardGranularity = "day" | "week" | "month";
@@ -1766,24 +1767,47 @@ function InflowPage() {
     setActiveAnalysisRows([]);
   };
 
-  const uploadPlaceCsv = async (file: File | undefined) => {
-    if (!file || !selectedInflowStore) return;
-    setPlaceDataStatus("CSV 업로드 및 분석 중");
-    const form = new FormData();
-    form.append("storeId", selectedInflowStore.id);
-    form.append("file", file);
+  const uploadPlaceFiles = async (files: FileList | File[]) => {
+    if (!selectedInflowStore || files.length === 0) return;
+    const selectedFiles = Array.from(files);
+    setPlaceDataStatus(`${selectedFiles.length}개 네이버 원본을 등록 중입니다.`);
+    let completed = 0;
     try {
-      const response = await fetch("/api/erp/place-uploads", { method: "POST", body: form });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? "CSV 업로드에 실패했습니다.");
-      setRangeStart((current) => payload.upload?.period_start && payload.upload.period_start < current ? payload.upload.period_start : current);
-      setRangeEnd((current) => payload.upload?.period_end && payload.upload.period_end > current ? payload.upload.period_end : current);
-      setAppliedRangeStart((current) => payload.upload?.period_start && payload.upload.period_start < current ? payload.upload.period_start : current);
-      setAppliedRangeEnd((current) => payload.upload?.period_end && payload.upload.period_end > current ? payload.upload.period_end : current);
-      setPlaceDataStatus(payload.duplicate ? "이미 업로드된 동일한 주간 CSV입니다." : "CSV 저장 및 분석 완료");
+      for (const file of selectedFiles) {
+        if (!/\.(csv|json)$/i.test(file.name)) throw new Error(`${file.name}: JSON 또는 CSV 파일만 올릴 수 있습니다.`);
+        const form = new FormData();
+        form.append("storeId", selectedInflowStore.id);
+        form.append("file", file);
+        const endpoint = /\.json$/i.test(file.name) ? "/api/erp/naver-json-uploads" : "/api/erp/place-uploads";
+        const response = await fetch(endpoint, { method: "POST", body: form });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error ?? `${file.name} 등록에 실패했습니다.`);
+        const upload = payload.upload;
+        setRangeStart((current) => upload?.period_start && upload.period_start < current ? upload.period_start : current);
+        setRangeEnd((current) => upload?.period_end && upload.period_end > current ? upload.period_end : current);
+        setAppliedRangeStart((current) => upload?.period_start && upload.period_start < current ? upload.period_start : current);
+        setAppliedRangeEnd((current) => upload?.period_end && upload.period_end > current ? upload.period_end : current);
+        completed += 1;
+      }
+      setPlaceDataStatus(`${completed}개 네이버 원본 등록 완료 · 같은 기간은 최신 원본만 지표에 반영됩니다.`);
       setQueryVersion((version) => version + 1);
     } catch (error) {
-      setPlaceDataStatus(error instanceof Error ? error.message : "CSV 업로드에 실패했습니다.");
+      setPlaceDataStatus(error instanceof Error ? error.message : "네이버 원본 등록에 실패했습니다.");
+    }
+  };
+
+  const deletePlaceUpload = async (upload: ServerPlaceUpload) => {
+    if (!selectedInflowStore || !window.confirm(`${upload.file_name} 원본을 삭제할까요? 이 원본에서 읽은 유입 데이터도 함께 제외됩니다.`)) return;
+    setPlaceDataStatus("네이버 원본을 삭제 중입니다.");
+    try {
+      const query = new URLSearchParams({ storeId: selectedInflowStore.id, uploadId: upload.id, source: upload.source });
+      const response = await fetch(`/api/erp/place-uploads?${query.toString()}`, { method: "DELETE" });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "네이버 원본 삭제에 실패했습니다.");
+      setPlaceDataStatus(`${upload.file_name} 원본을 삭제했습니다.`);
+      setQueryVersion((version) => version + 1);
+    } catch (error) {
+      setPlaceDataStatus(error instanceof Error ? error.message : "네이버 원본 삭제에 실패했습니다.");
     }
   };
 
@@ -1944,18 +1968,25 @@ function InflowPage() {
         </div>
         <div className="csv-upload-controls">
           <label className={selectedInflowStore ? "file-upload-button" : "file-upload-button disabled"}>
-            CSV 업로드
+            원본 여러 개 등록
             <input
-              accept=".csv,text/csv"
+              accept=".csv,.json,text/csv,application/json"
               disabled={!selectedInflowStore}
-              onChange={(event) => uploadPlaceCsv(event.target.files?.[0])}
+              multiple
+              onChange={(event) => {
+                if (event.target.files) void uploadPlaceFiles(event.target.files);
+                event.currentTarget.value = "";
+              }}
               type="file"
             />
           </label>
         </div>
         <div className="upload-history-list">
-          {selectedUploads.slice(0, 4).map((upload) => (
-            <span key={upload.id}>{upload.period_start}~{upload.period_end} · {upload.file_name}</span>
+          {selectedUploads.slice(0, 8).map((upload) => (
+            <span className="upload-source-chip" key={upload.id}>
+              <span>{upload.period_start}~{upload.period_end} · {upload.source.toUpperCase()} · {upload.file_name}</span>
+              <button aria-label={`${upload.file_name} 삭제`} className="upload-delete-button" onClick={() => void deletePlaceUpload(upload)} type="button">삭제</button>
+            </span>
           ))}
           {selectedInflowStore && selectedUploads.length === 0 && <span>아직 업로드된 JSON 또는 CSV가 없습니다.</span>}
           {!selectedInflowStore && <span>먼저 매장을 선택하세요.</span>}
@@ -2274,29 +2305,52 @@ function SalesPage() {
     }
   };
 
-  const uploadSalesFile = async (file: File | undefined) => {
-    if (!file) return;
+  const uploadSalesFiles = async (files: FileList | File[]) => {
+    if (files.length === 0) return;
     if (!selectedSalesStoreId) {
       setSalesUploadMessage("먼저 매장을 선택하세요.");
       return;
     }
     setSalesLoading(true);
     try {
-      const form = new FormData();
-      form.append("storeId", selectedSalesStoreId);
-      form.append("file", file);
-      const response = await fetch("/api/erp/card-uploads", { method: "POST", body: form });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || "업로드에 실패했습니다.");
-      const imported = payload.import as ServerCardImport;
-      setRangeStart(imported.period_start);
-      setRangeEnd(imported.period_end);
-      setSalesUploadMessage(payload.duplicate
-        ? `${file.name}은 이미 등록된 원본입니다. 저장된 데이터를 불러왔습니다.`
-        : `${file.name} 저장 완료 · 순매출 ${formatNumber(Number(imported.net_sales))}원 · 순결제 ${formatNumber(Number(imported.net_payment_count))}건`);
+      let lastImport: ServerCardImport | null = null;
+      let importedCount = 0;
+      for (const file of Array.from(files)) {
+        if (!/\.xlsx?$/i.test(file.name)) throw new Error(`${file.name}: XLS 또는 XLSX 파일만 올릴 수 있습니다.`);
+        const form = new FormData();
+        form.append("storeId", selectedSalesStoreId);
+        form.append("file", file);
+        const response = await fetch("/api/erp/card-uploads", { method: "POST", body: form });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || `${file.name} 업로드에 실패했습니다.`);
+        lastImport = payload.import as ServerCardImport;
+        importedCount += 1;
+      }
+      if (lastImport) {
+        setRangeStart(lastImport.period_start);
+        setRangeEnd(lastImport.period_end);
+      }
+      setSalesUploadMessage(`${importedCount}개 원본 저장 완료 · 같은 파일은 중복 저장하지 않습니다.`);
       setQueryVersion((version) => version + 1);
     } catch (error) {
       setSalesUploadMessage(error instanceof Error ? error.message : "엑셀 파일을 처리하지 못했습니다.");
+    } finally {
+      setSalesLoading(false);
+    }
+  };
+
+  const deleteSalesImport = async (row: ServerCardImport) => {
+    if (!selectedSalesStoreId || !window.confirm(`${row.file_name} 원본을 삭제할까요? 이 파일의 카드 매출 원장도 함께 제외됩니다.`)) return;
+    setSalesLoading(true);
+    try {
+      const query = new URLSearchParams({ storeId: selectedSalesStoreId, importId: row.id });
+      const response = await fetch(`/api/erp/card-uploads?${query.toString()}`, { method: "DELETE" });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "여신금융 원본 삭제에 실패했습니다.");
+      setSalesUploadMessage(`${row.file_name} 원본을 삭제했습니다.`);
+      setQueryVersion((version) => version + 1);
+    } catch (error) {
+      setSalesUploadMessage(error instanceof Error ? error.message : "여신금융 원본 삭제에 실패했습니다.");
     } finally {
       setSalesLoading(false);
     }
@@ -2309,8 +2363,17 @@ function SalesPage() {
         description="여신금융 원본 엑셀을 매장별로 보관하고 순매출, 순결제건수, 건당 결제액을 확인합니다."
         actions={
           <label className={selectedSalesStore ? "file-upload-button" : "file-upload-button disabled"}>
-            {salesLoading ? "처리중" : "엑셀 업로드"}
-            <input accept=".xls,.xlsx" disabled={!selectedSalesStore || salesLoading} onChange={(event) => uploadSalesFile(event.target.files?.[0])} type="file" />
+            {salesLoading ? "처리중" : "엑셀 여러 개 업로드"}
+            <input
+              accept=".xls,.xlsx"
+              disabled={!selectedSalesStore || salesLoading}
+              multiple
+              onChange={(event) => {
+                if (event.target.files) void uploadSalesFiles(event.target.files);
+                event.currentTarget.value = "";
+              }}
+              type="file"
+            />
           </label>
         }
       />
@@ -2357,12 +2420,14 @@ function SalesPage() {
               <span>원본 파일</span>
               <span>기간 / 순매출</span>
               <span>순결제건수</span>
+              <span>관리</span>
             </div>
             {cardData.imports.slice(0, 8).map((row) => (
               <div className="analysis-row" key={row.id}>
                 <strong>{row.file_name}</strong>
                 <span>{row.period_start}~{row.period_end} · {formatNumber(Number(row.net_sales))}원</span>
                 <span>{formatNumber(Number(row.net_payment_count))}건</span>
+                <button className="upload-delete-button" disabled={salesLoading} onClick={() => void deleteSalesImport(row)} type="button">삭제</button>
               </div>
             ))}
           </div>

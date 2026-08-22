@@ -206,6 +206,43 @@ export async function GET(request: Request) {
   }
 }
 
+export async function DELETE(request: Request) {
+  const initialAuth = authenticateRequest(request);
+  if (!initialAuth.ok) return authFailureResponse(initialAuth);
+  try {
+    const url = new URL(request.url);
+    const storeId = url.searchParams.get("storeId")?.trim();
+    const uploadId = url.searchParams.get("uploadId")?.trim();
+    const source = url.searchParams.get("source")?.trim();
+    if (!storeId || !uploadId || (source !== "csv" && source !== "json")) {
+      return NextResponse.json({ error: "storeId, uploadId and source(csv|json) are required" }, { status: 400 });
+    }
+    const storeAuth = authenticateRequest(request, { storeId });
+    if (!storeAuth.ok) return authFailureResponse(storeAuth);
+
+    const supabase = getSupabaseAdmin();
+    const table = source === "csv" ? "erp_place_csv_uploads" : "erp_naver_place_json_imports";
+    const { data: upload, error: lookupError } = await supabase
+      .from(table)
+      .select("id,store_id,file_name,raw_storage_path")
+      .eq("id", uploadId)
+      .eq("store_id", storeId)
+      .maybeSingle();
+    if (lookupError) throw lookupError;
+    if (!upload) return NextResponse.json({ error: "삭제할 네이버 플레이스 원본을 찾지 못했습니다." }, { status: 404 });
+
+    const { error: deleteError } = await supabase.from(table).delete().eq("id", uploadId).eq("store_id", storeId);
+    if (deleteError) throw deleteError;
+    if (upload.raw_storage_path) await supabase.storage.from(BUCKET).remove([upload.raw_storage_path]);
+    return NextResponse.json({ deletedId: upload.id, fileName: upload.file_name, source });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Place upload delete failed" },
+      { status: 503 },
+    );
+  }
+}
+
 export async function POST(request: Request) {
   const initialAuth = authenticateRequest(request);
   if (!initialAuth.ok) return authFailureResponse(initialAuth);

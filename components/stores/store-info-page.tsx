@@ -811,34 +811,39 @@ export function StoreInfoPage({
     }
   };
 
-  const uploadStoreFile = async (kind: "credit" | "place", file: File | undefined) => {
-    if (!file) return;
+  const uploadStoreFiles = async (kind: "credit" | "place", files: FileList | File[]) => {
+    const selectedFiles = Array.from(files);
+    if (selectedFiles.length === 0) return;
     if (!selectedStoreId || creating) {
       setSavedAt("먼저 업체명을 저장한 뒤 파일을 올려주세요.");
       return;
     }
-    const endpoint = kind === "credit"
-      ? "/api/erp/card-uploads"
-      : file.name.toLowerCase().endsWith(".json")
-        ? "/api/erp/naver-json-uploads"
-        : "/api/erp/place-uploads";
-    if (kind === "credit" && !/\.xlsx?$/i.test(file.name)) {
+    if (kind === "credit" && selectedFiles.some((file) => !/\.xlsx?$/i.test(file.name))) {
       setCreditUploadStatus("여신금융 원본은 XLS 또는 XLSX 파일만 올릴 수 있습니다.");
       return;
     }
-    if (kind === "place" && !/\.(json|csv)$/i.test(file.name)) {
+    if (kind === "place" && selectedFiles.some((file) => !/\.(json|csv)$/i.test(file.name))) {
       setPlaceUploadStatus("네이버 플레이스는 현재 JSON 또는 CSV 파일만 올릴 수 있습니다. Excel은 형식 샘플 확인 뒤 추가합니다.");
       return;
     }
     setUploading(kind);
-    const form = new FormData();
-    form.set("storeId", selectedStoreId);
-    form.set("file", file);
     try {
-      const response = await fetch(endpoint, { method: "POST", body: form });
-      const payload = await response.json() as { error?: string; duplicate?: boolean };
-      if (!response.ok) throw new Error(payload.error ?? "파일 등록에 실패했습니다.");
-      const message = payload.duplicate ? "같은 원본이 이미 등록되어 있습니다." : "파일을 등록했습니다. 데이터 화면에서 확인할 수 있습니다.";
+      let savedCount = 0;
+      for (const file of selectedFiles) {
+        const endpoint = kind === "credit"
+          ? "/api/erp/card-uploads"
+          : file.name.toLowerCase().endsWith(".json")
+            ? "/api/erp/naver-json-uploads"
+            : "/api/erp/place-uploads";
+        const form = new FormData();
+        form.set("storeId", selectedStoreId);
+        form.set("file", file);
+        const response = await fetch(endpoint, { method: "POST", body: form });
+        const payload = await response.json() as { error?: string; duplicate?: boolean };
+        if (!response.ok) throw new Error(payload.error ?? `${file.name} 등록에 실패했습니다.`);
+        if (!payload.duplicate) savedCount += 1;
+      }
+      const message = `${savedCount}개 원본을 등록했습니다. 데이터 화면에서 확인할 수 있습니다.`;
       if (kind === "credit") setCreditUploadStatus(message);
       else setPlaceUploadStatus(message);
     } catch (error) {
@@ -1199,15 +1204,15 @@ export function StoreInfoPage({
         </div>
         <div className="store-link-actions">
           <label className="btn btn-light">
-            {uploading === "credit" ? "여신금융 등록 중" : "여신금융 매출 등록"}
-            <input accept=".xls,.xlsx" disabled={uploading !== null} hidden onChange={(event) => uploadStoreFile("credit", event.target.files?.[0])} type="file" />
+            {uploading === "credit" ? "여신금융 등록 중" : "여신금융 매출 여러 개 등록"}
+            <input accept=".xls,.xlsx" disabled={uploading !== null} hidden multiple onChange={(event) => { if (event.target.files) void uploadStoreFiles("credit", event.target.files); event.currentTarget.value = ""; }} type="file" />
           </label>
           <span className="plain-text">{creditUploadStatus || "XLS/XLSX · 매장별 카드 매출 원본"}</span>
         </div>
         <div className="store-link-actions">
           <label className="btn btn-light">
-            {uploading === "place" ? "네이버 등록 중" : "네이버 플레이스 등록"}
-            <input accept=".json,.csv" disabled={uploading !== null} hidden onChange={(event) => uploadStoreFile("place", event.target.files?.[0])} type="file" />
+            {uploading === "place" ? "네이버 등록 중" : "네이버 플레이스 여러 개 등록"}
+            <input accept=".json,.csv" disabled={uploading !== null} hidden multiple onChange={(event) => { if (event.target.files) void uploadStoreFiles("place", event.target.files); event.currentTarget.value = ""; }} type="file" />
           </label>
           <span className="plain-text">{placeUploadStatus || "JSON 또는 CSV · 기간, 원본, 수집 상태를 매장별로 보관"}</span>
         </div>
