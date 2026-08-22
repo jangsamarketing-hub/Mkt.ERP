@@ -114,7 +114,13 @@ export function DailyTasksPage({ stores: fallbackStores }: { stores: StoreRow[];
     for (const task of visibleTasks) map.set(task.storeId, [...(map.get(task.storeId) ?? []), task]);
     return [...map.entries()].map(([storeId, tasks]) => ({ storeId, tasks }));
   }, [visibleTasks]);
-  const selectedTask = todayTasks.find((task) => task.id === selectedId) ?? null;
+  useEffect(() => {
+    if (!visibleTasks.some((task) => task.id === selectedId)) {
+      setSelectedId(visibleTasks[0]?.id ?? "");
+    }
+  }, [selectedId, visibleTasks]);
+
+  const selectedTask = visibleTasks.find((task) => task.id === selectedId) ?? null;
 
   useEffect(() => {
     setMemo(selectedTask?.evidence_text ?? "");
