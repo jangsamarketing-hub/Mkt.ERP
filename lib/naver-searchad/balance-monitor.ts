@@ -65,7 +65,10 @@ export async function getBalanceMonitorItems(): Promise<BalanceMonitorItem[]> {
   if (storesError) throw storesError;
   if (snapshotsError) throw snapshotsError;
   // Keep the read-only monitor usable until the additive alert migration is applied.
-  if (alertsError && alertsError.code !== "42P01") throw alertsError;
+  // PostgREST reports a newly-added but not yet exposed table as PGRST205,
+  // while direct Postgres reports it as 42P01. Either state should not block
+  // the read-only balance screen before the optional alert ledger is applied.
+  if (alertsError && alertsError.code !== "42P01" && alertsError.code !== "PGRST205") throw alertsError;
 
   const latestByStore = new Map<string, Snapshot>();
   for (const snapshot of (snapshots ?? []) as Snapshot[]) if (!latestByStore.has(snapshot.store_id)) latestByStore.set(snapshot.store_id, snapshot);
