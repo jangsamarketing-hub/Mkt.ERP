@@ -2502,15 +2502,31 @@ function TasksPage() {
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskDate, setNewTaskDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [addingTask, setAddingTask] = useState(false);
+  const todayInKorea = new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Seoul" }).format(new Date());
+
+  const getTaskEntryStatus = (task?: StoreWorkUpdate) => {
+    if (!task) return "업무 선택 필요";
+    if (task.evidence_text?.trim() || task.evidence_urls?.length) return "기입완료";
+    if (task.task_date && task.task_date < todayInKorea) return "업무 누락";
+    return "미기입";
+  };
+
+  const getActualWeekRange = (week: number) => {
+    const dates = updates
+      .filter((task) => task.task_week === week && task.task_date)
+      .map((task) => task.task_date as string)
+      .sort();
+    return dates.length ? `(${dates[0]} ~ ${dates[dates.length - 1]})` : "(업무 생성 대기)";
+  };
 
   const loadUpdates = async () => {
     if (!selectedStoreId) return;
     setStatus("업무 목록을 불러오는 중입니다.");
     try {
       const response = await fetch(`/api/erp/stores/${encodeURIComponent(selectedStoreId)}/work-updates`);
-      const payload = await response.json() as { updates?: StoreWorkUpdate[]; error?: string };
+      const payload = await response.json().catch(() => ({})) as { updates?: StoreWorkUpdate[]; error?: string };
       if (!response.ok) throw new Error(payload.error ?? "업무 목록을 불러오지 못했습니다.");
-      const list = payload.updates ?? [];
+      const list = [...(payload.updates ?? [])].sort((left, right) => (left.task_date ?? "").localeCompare(right.task_date ?? ""));
       setUpdates(list);
       setSelectedId((current) => list.some((item) => item.id === current) ? current : (list[0]?.id ?? ""));
       setStatus(list.length ? "" : "등록된 업무가 없습니다. 매장 정보의 주차별 업무 리스트를 저장해주세요.");
@@ -2537,7 +2553,7 @@ function TasksPage() {
           taskDate: selectedTask.task_date, evidenceText: memo, evidenceUrls, owner: "company", publicVisible: true,
         }),
       });
-      const payload = await response.json() as { update?: StoreWorkUpdate; error?: string };
+      const payload = await response.json().catch(() => ({})) as { update?: StoreWorkUpdate; error?: string };
       if (!response.ok) throw new Error(payload.error ?? "업무 기록을 저장하지 못했습니다.");
       setUpdates((current) => current.map((item) => item.id === selectedTask.id ? (payload.update ?? item) : item));
       setStatus(memo.trim() || evidenceUrls.length ? "기록 저장 완료 · 사장님 보고서에 기입완료로 표시됩니다." : "기록이 비어 있어 미기입 상태입니다.");
@@ -2584,7 +2600,8 @@ function TasksPage() {
     finally { setAddingTask(false); }
   };
 
-  const completed = updates.filter((task) => Boolean(task.evidence_text || task.evidence_urls?.length)).length;
+  const completed = updates.filter((task) => getTaskEntryStatus(task) === "기입완료").length;
+  const missing = updates.filter((task) => getTaskEntryStatus(task) === "업무 누락").length;
 
   return (
     <>
@@ -2595,8 +2612,8 @@ function TasksPage() {
         <div className="task-summary-grid">
           <MetricCard label="전체 업무" value={`${updates.length}개`} />
           <MetricCard label="기입완료" value={`${completed}개`} tone="green" />
-          <MetricCard label="미기입" value={`${updates.length - completed}개`} />
-          <MetricCard label="선택 매장" value={selectedStore?.name ?? "매장 선택 필요"} tone="red" />
+          <MetricCard label="업무 누락" value={`${missing}개`} tone={missing ? "red" : "green"} />
+          <MetricCard label="선택 매장" value={selectedStore?.name ?? "매장 선택 필요"} />
         </div>
       </section>
       <section className="panel">
@@ -2615,7 +2632,7 @@ function TasksPage() {
           {[1, 2, 3, 4].map((week) => (
             <section className="panel week-panel" key={week}>
               <h2>
-                {week}주차 <span>{getWeekRange(week)}</span>
+                {week}주차 <span>{getActualWeekRange(week)}</span>
               </h2>
               <div className="task-table">
                 {updates
@@ -2625,28 +2642,28 @@ function TasksPage() {
                       <span>{task.task_date ?? "날짜 미정"}</span>
                       <span>{task.task_date ? new Intl.DateTimeFormat("ko-KR", { weekday: "short" }).format(new Date(`${task.task_date}T00:00:00`)) : ""}</span>
                       <strong>{task.title}</strong>
-                      <em>{task.evidence_text || task.evidence_urls?.length ? "기입완료" : "미기입"}</em>
+                      <em className={getTaskEntryStatus(task) === "기입완료" ? "is-written" : getTaskEntryStatus(task) === "업무 누락" ? "is-missing" : ""}>{getTaskEntryStatus(task)}</em>
                     </button>
                   ))}
               </div>
             </section>
           ))}
         </div>
-        <aside className="panel task-detail">
+        <form className="panel task-detail" onSubmit={(event) => { event.preventDefault(); void saveWork(); }}>
           <h2>업무 상세 등록/확인</h2>
           <InfoLine label="날짜" value={selectedTask?.task_date ?? "업무 선택 필요"} />
           <InfoLine label="작업 이름" value={selectedTask?.title ?? "업무 선택 필요"} />
-          <InfoLine label="상태" value={selectedTask && (selectedTask.evidence_text || selectedTask.evidence_urls?.length) ? "기입완료" : "미기입"} />
+          <InfoLine label="상태" value={getTaskEntryStatus(selectedTask)} />
           <label className="mock-field">
             <span>업무 처리 내용</span>
             <textarea disabled={!selectedTask} onChange={(event) => setMemo(event.target.value)} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key === "Enter") { event.preventDefault(); void saveWork(); } }} placeholder="업무 처리 내용, 변경 사항, 사장님께 보여줄 설명을 입력하세요. Shift+Enter는 줄바꿈, Ctrl+Enter는 저장입니다." value={memo} />
           </label>
           <label className="mock-field"><span>증빙 링크 (한 줄에 하나)</span><textarea disabled={!selectedTask} onChange={(event) => setUrls(event.target.value)} placeholder="사진 또는 문서 링크를 한 줄에 하나씩 입력하세요." value={urls} /></label>
           <label className="mock-field"><span>사진 증빙 추가 (JPG, PNG, WEBP · 10MB 이하)</span><input accept="image/jpeg,image/png,image/webp" disabled={!selectedTask || uploadingEvidence} onChange={(event) => uploadWorkEvidence(event.target.files?.[0] ?? null)} type="file" /></label>
-          <button className="btn btn-primary" disabled={!selectedTask || saving || uploadingEvidence} onClick={saveWork} type="button">{saving ? "저장 중" : "기록 저장"}</button>
+          <button className="btn btn-primary" disabled={!selectedTask || saving || uploadingEvidence} type="submit">{saving ? "저장 중" : "기록 저장"}</button>
           {status && <p className="plain-text">{status}</p>}
           <p className="plain-text">완료 버튼은 없습니다. 처리 내용 또는 증빙 링크를 저장하면 자동으로 기입완료가 되며, 사장님 보고서에서는 같은 내용이 읽기 전용으로 표시됩니다.</p>
-        </aside>
+        </form>
       </section>
     </>
   );
