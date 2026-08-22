@@ -574,6 +574,26 @@ a {
   gap: 8px;
 }
 
+.dashboard-signal-dots {
+  display: grid;
+  grid-template-columns: repeat(2, max-content);
+  gap: 3px 7px;
+}
+
+.dashboard-signal-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1;
+}
+
+.dashboard-signal-dot .dot {
+  width: 7px;
+  height: 7px;
+}
+
 .signal-metric {
   min-width: 142px;
 }

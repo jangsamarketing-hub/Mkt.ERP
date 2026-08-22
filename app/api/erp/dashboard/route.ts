@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { authenticateRequest, authFailureResponse } from "@/lib/auth/request";
 import { buildTimeBuckets, normalizeGranularity } from "@/lib/analytics/time-buckets";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { activeFourWeekStart, buildFourWeekWorkPlan, workPlanDate } from "@/lib/work-plan";
 
 type PlaceSnapshot = {
   storeId: string;
@@ -10,6 +11,13 @@ type PlaceSnapshot = {
   inflow: number | null;
   source: "csv" | "json";
   uploadedAt: string;
+};
+
+type WorkUpdateRow = {
+  store_id: string;
+  task_date: string | null;
+  evidence_text: string | null;
+  evidence_urls: unknown;
 };
 
 function numberOrNull(value: unknown) {
@@ -33,6 +41,39 @@ function pickExactSnapshot(snapshots: PlaceSnapshot[], start: string, end: strin
     })[0] ?? null;
 }
 
+async function ensureCurrentWorkPlans(stores: Array<{ id: string; management_start_date: string | null; lifecycle_status: string | null }>) {
+  const supabase = getSupabaseAdmin();
+  const plan = buildFourWeekWorkPlan();
+  await Promise.all(stores.map(async (store) => {
+    if (!store.management_start_date || store.lifecycle_status === "archived") return;
+    const cycleStart = activeFourWeekStart(store.management_start_date);
+    const cycleEnd = workPlanDate(cycleStart, { week: 4, dayOffset: 27, title: "" });
+    const { data: existing, error } = await supabase
+      .from("erp_store_work_updates")
+      .select("task_week,task_date,title")
+      .eq("store_id", store.id)
+      .gte("task_date", cycleStart)
+      .lte("task_date", cycleEnd);
+    if (error) throw error;
+    const keys = new Set((existing ?? []).map((item) => `${item.task_week}|${item.task_date}|${item.title}`));
+    const missing = plan
+      .map((item) => ({
+        store_id: store.id,
+        task_week: item.week,
+        task_date: workPlanDate(cycleStart, item),
+        title: item.title,
+        owner: "company",
+        status: "pending",
+        public_visible: true,
+        evidence_urls: [],
+      }))
+      .filter((item) => !keys.has(`${item.task_week}|${item.task_date}|${item.title}`));
+    if (!missing.length) return;
+    const { error: insertError } = await supabase.from("erp_store_work_updates").insert(missing);
+    if (insertError) throw insertError;
+  }));
+}
+
 export async function GET(request: Request) {
   const auth = authenticateRequest(request, { roles: ["admin", "staff"] });
   if (!auth.ok) return authFailureResponse(auth);
@@ -45,10 +86,12 @@ export async function GET(request: Request) {
     const overallEnd = buckets.at(-1)?.end ?? buckets[0].end;
     const supabase = getSupabaseAdmin();
 
-    let storesQuery = supabase.from("erp_stores").select("id,name,manager_name,category,region,naver_mid").neq("lifecycle_status", "archived").order("name");
+    let storesQuery = supabase.from("erp_stores").select("id,name,manager_name,category,region,naver_mid,management_start_date,lifecycle_status").neq("lifecycle_status", "archived").order("name");
     if (auth.session.storeIds !== "*") storesQuery = storesQuery.in("id", auth.session.storeIds);
-    const [storeResult, csvResult, jsonResult, salesResult, searchAdSnapshotResult] = await Promise.all([
-      storesQuery,
+    const storeResult = await storesQuery;
+    if (storeResult.error) throw storeResult.error;
+    await ensureCurrentWorkPlans(storeResult.data ?? []);
+    const [csvResult, jsonResult, salesResult, searchAdSnapshotResult, workUpdateResult] = await Promise.all([
       supabase
         .from("erp_place_csv_uploads")
         .select("store_id,period_start,period_end,summary,uploaded_at")
@@ -72,8 +115,13 @@ export async function GET(request: Request) {
         .eq("balance_status", "available")
         .not("biz_money_balance", "is", null)
         .order("captured_at", { ascending: false }),
+      supabase
+        .from("erp_store_work_updates")
+        .select("store_id,task_date,evidence_text,evidence_urls")
+        .gte("task_date", overallStart)
+        .lte("task_date", overallEnd),
     ]);
-    const firstError = storeResult.error ?? csvResult.error ?? jsonResult.error ?? salesResult.error ?? searchAdSnapshotResult.error;
+    const firstError = csvResult.error ?? jsonResult.error ?? salesResult.error ?? searchAdSnapshotResult.error ?? workUpdateResult.error;
     if (firstError) throw firstError;
 
     const csvSnapshots: PlaceSnapshot[] = (csvResult.data ?? []).map((upload) => {
@@ -107,6 +155,7 @@ export async function GET(request: Request) {
     }));
     const snapshots: PlaceSnapshot[] = [...csvSnapshots, ...jsonSnapshots.filter((snapshot): snapshot is Exclude<typeof snapshot, null> => Boolean(snapshot))];
     const salesRows = salesResult.data ?? [];
+    const workUpdates = (workUpdateResult.data ?? []) as WorkUpdateRow[];
     const latestBalanceByStore = new Map<string, { balance: number; capturedAt: string }>();
     for (const snapshot of searchAdSnapshotResult.data ?? []) {
       if (!latestBalanceByStore.has(snapshot.store_id)) latestBalanceByStore.set(snapshot.store_id, { balance: Number(snapshot.biz_money_balance), capturedAt: snapshot.captured_at });
@@ -119,6 +168,16 @@ export async function GET(request: Request) {
         const rows = salesRows.filter((row) => row.store_id === store.id && row.transaction_date >= bucket.start && row.transaction_date <= bucket.end);
         if (!rows.length) return null;
         return rows.reduce((sum, row) => sum + Number(row.net_sales ?? 0), 0);
+      });
+      const taskBuckets = buckets.map((bucket) => {
+        const bucketUpdates = workUpdates.filter((update) => update.store_id === store.id && update.task_date && update.task_date >= bucket.start && update.task_date <= bucket.end);
+        if (!bucketUpdates.length) return null;
+        const writtenCount = bucketUpdates.filter((update) => {
+          const hasText = Boolean(update.evidence_text?.trim());
+          const hasAttachment = Array.isArray(update.evidence_urls) && update.evidence_urls.some((url) => typeof url === "string" && url.trim().length > 0);
+          return hasText || hasAttachment;
+        }).length;
+        return Math.round((writtenCount / bucketUpdates.length) * 100);
       });
 
       return {
@@ -134,6 +193,9 @@ export async function GET(request: Request) {
         previousInflow: inflowBuckets.at(-2) ?? null,
         currentSales: salesBuckets.at(-1) ?? null,
         previousSales: salesBuckets.at(-2) ?? null,
+        taskBuckets,
+        currentTaskProgress: taskBuckets.at(-1) ?? null,
+        previousTaskProgress: taskBuckets.at(-2) ?? null,
         bizMoney: latestBalanceByStore.get(store.id)?.balance ?? null,
         bizMoneyUpdatedAt: latestBalanceByStore.get(store.id)?.capturedAt ?? null,
       };

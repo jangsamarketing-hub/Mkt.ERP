@@ -47,6 +47,9 @@ type StoreRow = {
   weeklyInflowRaw?: Array<number | null>;
   weeklySales?: Array<number | null>;
   weeklyTasks: [number, number, number, number];
+  weeklyTasksRaw?: Array<number | null>;
+  currentTaskProgress?: number | null;
+  previousTaskProgress?: number | null;
   memo: string;
   naverMid?: string | null;
   clientName?: string | null;
@@ -346,6 +349,9 @@ type DashboardPlaceStore = {
   previousInflow: number | null;
   currentSales: number | null;
   previousSales: number | null;
+  taskBuckets: Array<number | null>;
+  currentTaskProgress: number | null;
+  previousTaskProgress: number | null;
   bizMoney: number | null;
   bizMoneyUpdatedAt?: string | null;
 };
@@ -543,6 +549,31 @@ function getStoreSignal(store: StoreRow): Signal {
   if (inflow === "yellow" || sales === "yellow") return "yellow";
   if (inflow === "blue" || sales === "blue") return "blue";
   return "gray";
+}
+
+function getBalanceSignal(value: number | null): Signal {
+  if (value === null) return "gray";
+  return value <= 100000 ? "red" : "blue";
+}
+
+function SignalDots({ store }: { store: StoreRow }) {
+  const signals = [
+    ["광고", getBalanceSignal(store.bizMoney)],
+    ["유입", getDashboardSignal(store.naverInflow, store.previous.naverInflow, store.weeklyInflowRaw ?? store.weeklyInflow)],
+    ["매출", getDashboardSignal(store.sales, store.previous.sales, store.weeklySales ?? [])],
+    ["기입", getDashboardSignal(store.currentTaskProgress ?? null, store.previousTaskProgress ?? null, store.weeklyTasksRaw ?? [])],
+  ] as const;
+  const label = signals.map(([name, signal]) => `${name} ${signal === "gray" ? "데이터 없음" : signal === "blue" ? "정상" : signal === "yellow" ? "하락" : "주의"}`).join(", ");
+  return (
+    <span aria-label={label} className="dashboard-signal-dots">
+      {signals.map(([name, signal]) => (
+        <span className="dashboard-signal-dot" key={name} title={`${name}: ${signal === "gray" ? "데이터 없음" : signal === "blue" ? "정상" : signal === "yellow" ? "하락" : "주의"}`}>
+          <i className={`dot ${signal}`} />
+          <small>{name}</small>
+        </span>
+      ))}
+    </span>
+  );
 }
 
 function getDiffLabel(current: number | null, previous: number | null) {
@@ -1282,7 +1313,10 @@ function Dashboard({
         weeklyInflow: placeStore.inflowBuckets.map((value) => value ?? 0),
         weeklyInflowRaw: placeStore.inflowBuckets,
         weeklySales: placeStore.salesBuckets,
-        weeklyTasks: base?.weeklyTasks ?? [0, 0, 0, 0],
+        weeklyTasks: placeStore.taskBuckets.map((value) => value ?? 0) as [number, number, number, number],
+        weeklyTasksRaw: placeStore.taskBuckets,
+        currentTaskProgress: placeStore.currentTaskProgress,
+        previousTaskProgress: placeStore.previousTaskProgress,
         memo: base?.memo ?? "데이터 연결 대기",
       } satisfies StoreRow;
     });
@@ -1443,7 +1477,7 @@ function Dashboard({
               <tr key={store.id}>
                 <td>
                   <span className="week-with-signal">
-                    <i aria-label={getStoreSignal(store) === "gray" ? "비교 데이터 없음" : getStoreSignal(store) === "blue" ? "상승 또는 유지" : getStoreSignal(store) === "yellow" ? "전주 대비 하락" : "전주 및 최근 평균 대비 하락"} className={`dot ${getStoreSignal(store)}`} />
+                    <SignalDots store={store} />
                     <span className={getWeekClass(store.week)}>{store.week}</span>
                   </span>
                 </td>
