@@ -3557,6 +3557,29 @@ a {
 .public-submit-button:disabled { opacity: 0.65; cursor: wait; }
 .public-form-status { margin: 0; color: #18774d; font-size: 14px; line-height: 1.6; }
 
+.balance-guide { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin: 16px 0; color: #48627e; font-size: 14px; font-weight: 700; }
+.balance-dot { width: 10px; height: 10px; display: inline-block; border-radius: 999px; margin-right: 5px; }
+.balance-dot.critical { background: #dc2626; }
+.balance-dot.warning { background: #f59e0b; }
+.balance-dot.normal { background: #2563eb; }
+.balance-dot.unavailable { background: #94a3b8; }
+.balance-list { display: grid; gap: 12px; }
+.balance-item { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 18px; align-items: center; padding: 18px; border: 1px solid #d8e4f3; border-radius: 14px; background: #fff; }
+.balance-item.critical { border-left: 5px solid #dc2626; }
+.balance-item.warning { border-left: 5px solid #f59e0b; }
+.balance-item-main { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.balance-item h2 { margin: 0; color: #17345e; font-size: 17px; }
+.balance-item p { margin: 5px 0 0; color: #617895; font-size: 13px; }
+.balance-amount { display: grid; justify-items: end; gap: 5px; white-space: nowrap; }
+.balance-amount strong { color: #17345e; font-size: 21px; }
+.balance-item.critical .balance-amount strong { color: #b91c1c; }
+.balance-item.warning .balance-amount strong { color: #b45309; }
+.balance-amount small { color: #617895; font-weight: 700; }
+@media (max-width: 720px) {
+  .balance-item { grid-template-columns: 1fr; gap: 10px; }
+  .balance-amount { justify-items: start; }
+}
+
 @media (max-width: 560px) {
   .public-store-shell { width: min(100% - 24px, 880px); padding-top: 12px; }
   .public-hero-mascot { width: 68px; height: 68px; margin-top: 16px; }
