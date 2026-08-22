@@ -13,16 +13,18 @@ function errorMessage(error: unknown, fallback: string) {
 }
 
 export async function GET(request: Request) {
-  const auth = authenticateRequest(request, { roles: ["admin"] });
+  const auth = authenticateRequest(request, { roles: ["admin", "staff"] });
   if (!auth.ok) return authFailureResponse(auth);
   try {
     const url = new URL(request.url);
     const includeArchived = url.searchParams.get("includeArchived") === "true";
     const supabase = getSupabaseAdmin();
-    const { data, error } = await supabase
+    let query = supabase
       .from("erp_stores")
       .select("*")
       .order("name");
+    if (auth.session.storeIds !== "*") query = query.in("id", auth.session.storeIds);
+    const { data, error } = await query;
 
     if (error) throw error;
     const stores = (data ?? []).filter((store) => includeArchived || (store.lifecycle_status ?? "active") !== "archived");

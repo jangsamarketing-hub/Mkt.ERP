@@ -34,7 +34,7 @@ function pickExactSnapshot(snapshots: PlaceSnapshot[], start: string, end: strin
 }
 
 export async function GET(request: Request) {
-  const auth = authenticateRequest(request, { roles: ["admin"] });
+  const auth = authenticateRequest(request, { roles: ["admin", "staff"] });
   if (!auth.ok) return authFailureResponse(auth);
 
   try {
@@ -45,8 +45,10 @@ export async function GET(request: Request) {
     const overallEnd = buckets.at(-1)?.end ?? buckets[0].end;
     const supabase = getSupabaseAdmin();
 
+    let storesQuery = supabase.from("erp_stores").select("id,name,manager_name,category,region,naver_mid").neq("lifecycle_status", "archived").order("name");
+    if (auth.session.storeIds !== "*") storesQuery = storesQuery.in("id", auth.session.storeIds);
     const [storeResult, csvResult, jsonResult, salesResult, searchAdSnapshotResult] = await Promise.all([
-      supabase.from("erp_stores").select("id,name,manager_name,category,region,naver_mid").neq("lifecycle_status", "archived").order("name"),
+      storesQuery,
       supabase
         .from("erp_place_csv_uploads")
         .select("store_id,period_start,period_end,summary,uploaded_at")
