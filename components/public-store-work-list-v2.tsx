@@ -9,6 +9,14 @@ function dateLabel(date: string | null) {
     .format(new Date(`${date}T00:00:00+09:00`));
 }
 
+function entryLabel(item: PublicStoreWorkItem, written: boolean) {
+  if (written) return "기입완료";
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date());
+  return item.date && item.date < today ? "업무 누락" : "미기입";
+}
+
 export function PublicStoreWorkListV2({ items, contractWeeks }: { items: PublicStoreWorkItem[]; contractWeeks: number }) {
   const [openedId, setOpenedId] = useState<string>("");
   const weeks = Array.from({ length: Math.max(1, contractWeeks) }, (_, index) => index + 1);
@@ -31,7 +39,7 @@ export function PublicStoreWorkListV2({ items, contractWeeks }: { items: PublicS
                   <button className="public-work-row" onClick={() => setOpenedId(opened ? "" : item.id)} type="button">
                     <span>{dateLabel(item.date)}</span>
                     <strong>{item.title}</strong>
-                    <em className={written ? "done" : "pending"}>{written ? "기입완료" : "미기입"}</em>
+                    <em className={written ? "done" : "pending"}>{entryLabel(item, written)}</em>
                   </button>
                   {opened && (
                     <div className="public-work-detail">

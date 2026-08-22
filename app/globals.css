@@ -3269,6 +3269,10 @@ a {
   max-height: 360px;
 }
 
+.daily-task-table .task-row-button {
+  grid-template-columns: 52px minmax(0, 1fr) auto;
+}
+
 .task-row-button,
 .task-row-static {
   display: grid;
@@ -3303,6 +3307,16 @@ a {
   font-size: 12px;
   font-style: normal;
   font-weight: 700;
+}
+
+.task-row-button em.is-missing {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.task-row-button em.is-written {
+  background: #dbeafe;
+  color: #1d4ed8;
 }
 
 .task-detail {

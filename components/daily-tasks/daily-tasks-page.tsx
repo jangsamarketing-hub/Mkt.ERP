@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useStoreRegistry } from "@/components/stores/store-registry-context";
 
 type StoreRow = { id: string; name: string; manager?: string };
@@ -29,11 +29,18 @@ function hasEntry(task: WorkUpdate) {
   return Boolean(task.evidence_text?.trim() || task.evidence_urls?.length);
 }
 
+function entryLabel(task: WorkUpdate) {
+  if (hasEntry(task)) return "기입완료";
+  if (task.task_date && task.task_date < seoulDate()) return "업무 누락";
+  return "미기입";
+}
+
 export function DailyTasksPage({ stores: fallbackStores }: { stores: StoreRow[]; initialDailyInboxTasks?: DailyInboxTask[] }) {
   const registry = useStoreRegistry();
-  const stores = registry.stores.length
+  const stores = useMemo(() => (registry.stores.length
     ? registry.stores.map((store) => ({ id: store.id, name: store.name, manager: store.managerName ?? "미배정" }))
-    : fallbackStores;
+    : fallbackStores), [fallbackStores, registry.stores]);
+  const storeIds = stores.map((store) => store.id).join(",");
   const [selectedDate, setSelectedDate] = useState(seoulDate);
   const [managerFilter, setManagerFilter] = useState("all");
   const [updates, setUpdates] = useState<TaskWithStore[]>([]);
@@ -45,7 +52,7 @@ export function DailyTasksPage({ stores: fallbackStores }: { stores: StoreRow[];
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState("");
 
-  const loadTasks = async () => {
+  const loadTasks = useCallback(async () => {
     if (!stores.length) {
       setUpdates([]);
       return;
@@ -53,9 +60,9 @@ export function DailyTasksPage({ stores: fallbackStores }: { stores: StoreRow[];
     setLoading(true);
     setMessage("");
     try {
-      const results = await Promise.all(stores.map(async (store) => {
+      const results = await Promise.allSettled(stores.map(async (store) => {
         const response = await fetch(`/api/erp/stores/${encodeURIComponent(store.id)}/work-updates`);
-        const payload = await response.json() as { updates?: WorkUpdate[]; error?: string };
+        const payload = await response.json().catch(() => ({})) as { updates?: WorkUpdate[]; error?: string };
         if (!response.ok) throw new Error(payload.error ?? `${store.name} 업무를 불러오지 못했습니다.`);
         return (payload.updates ?? []).map((task) => ({
           ...task,
@@ -64,18 +71,25 @@ export function DailyTasksPage({ stores: fallbackStores }: { stores: StoreRow[];
           managerName: store.manager ?? "미배정",
         }));
       }));
-      const next = results.flat().sort((a, b) => a.storeName.localeCompare(b.storeName, "ko") || (a.task_date ?? "").localeCompare(b.task_date ?? ""));
+      const failedStores = results
+        .flatMap((result, index) => result.status === "rejected" ? [stores[index]?.name ?? "알 수 없는 매장"] : []);
+      const next = results
+        .flatMap((result) => result.status === "fulfilled" ? result.value : [])
+        .sort((a, b) => a.storeName.localeCompare(b.storeName, "ko") || (a.task_date ?? "").localeCompare(b.task_date ?? ""));
       setUpdates(next);
-      setSelectedId((current) => next.some((task) => task.id === current) ? current : (next.find((task) => task.task_date === selectedDate && task.owner === "company")?.id ?? next[0]?.id ?? ""));
+      setSelectedId((current) => next.some((task) => task.id === current && task.task_date === selectedDate && task.owner === "company")
+        ? current
+        : (next.find((task) => task.task_date === selectedDate && task.owner === "company")?.id ?? ""));
+      if (failedStores.length) setMessage(`${failedStores.join(", ")} 업무는 불러오지 못했습니다. 나머지 매장 업무는 표시됩니다.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "업무 원장을 불러오지 못했습니다.");
       setUpdates([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedDate, stores, storeIds]);
 
-  useEffect(() => { void loadTasks(); }, [registry.loading, stores.length]);
+  useEffect(() => { void loadTasks(); }, [loadTasks, registry.loading]);
 
   const managerOptions = useMemo(
     () => [...new Set(stores.map((store) => store.manager?.trim()).filter((manager): manager is string => Boolean(manager)))].sort((a, b) => a.localeCompare(b, "ko")),
@@ -94,7 +108,7 @@ export function DailyTasksPage({ stores: fallbackStores }: { stores: StoreRow[];
   }, [todayTasks]);
   const enteredCount = todayTasks.filter(hasEntry).length;
   const missingCount = todayTasks.length - enteredCount;
-  const selectedTask = updates.find((task) => task.id === selectedId) ?? null;
+  const selectedTask = todayTasks.find((task) => task.id === selectedId) ?? null;
 
   useEffect(() => {
     setMemo(selectedTask?.evidence_text ?? "");
@@ -200,12 +214,12 @@ export function DailyTasksPage({ stores: fallbackStores }: { stores: StoreRow[];
           ) : grouped.map(({ storeId, tasks }) => (
             <section className="panel week-panel" key={storeId}>
               <h2>{tasks[0].storeName} <span>담당 {tasks[0].managerName}</span></h2>
-              <div className="task-table">
+              <div className="task-table daily-task-table">
                 {tasks.map((task) => (
                   <button aria-pressed={selectedTask?.id === task.id} className={`task-row-button${selectedTask?.id === task.id ? " is-selected" : ""}`} key={task.id} onClick={() => selectTask(task)} type="button">
                     <span>{task.task_week ? `${task.task_week}주차` : "일정"}</span>
                     <strong>{task.title}</strong>
-                    <em>{hasEntry(task) ? "기입완료" : "미기입"}</em>
+                    <em className={hasEntry(task) ? "is-written" : "is-missing"}>{entryLabel(task)}</em>
                   </button>
                 ))}
               </div>
@@ -218,8 +232,8 @@ export function DailyTasksPage({ stores: fallbackStores }: { stores: StoreRow[];
           {selectedTask ? <>
             <div className="info-line"><span>매장</span><strong>{selectedTask.storeName}</strong></div>
             <div className="info-line"><span>업무</span><strong>{selectedTask.title}</strong></div>
-            <label className="mock-field"><span>처리 내용</span><textarea onChange={(event) => setMemo(event.target.value)} placeholder="사장님에게 보여줄 처리 내용과 변경 사항을 입력하세요." value={memo} /></label>
-            <label className="mock-field"><span>사진/문서 증빙 링크 (한 줄에 하나)</span><textarea onChange={(event) => setUrls(event.target.value)} placeholder="공유 가능한 사진 또는 문서 링크를 입력하세요." value={urls} /></label>
+            <label className="mock-field"><span>처리 내용</span><textarea onChange={(event) => setMemo(event.target.value)} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key === "Enter") { event.preventDefault(); void saveEntry(); } }} placeholder="사장님에게 보여줄 처리 내용과 변경 사항을 입력하세요. Shift+Enter는 줄바꿈, Ctrl+Enter는 저장입니다." value={memo} /></label>
+            <label className="mock-field"><span>사진/문서 증빙 링크 (한 줄에 하나)</span><textarea onChange={(event) => setUrls(event.target.value)} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key === "Enter") { event.preventDefault(); void saveEntry(); } }} placeholder="공유 가능한 사진 또는 문서 링크를 입력하세요." value={urls} /></label>
             <label className="mock-field"><span>사진 증빙 추가 (JPG, PNG, WEBP · 10MB 이하)</span><input accept="image/jpeg,image/png,image/webp" disabled={uploading} onChange={(event) => uploadEvidence(event.target.files?.[0] ?? null)} type="file" /></label>
             {message ? <p className="plain-text">{message}</p> : null}
             <button className="btn btn-primary" disabled={saving || uploading} onClick={saveEntry} type="button">{saving ? "저장 중" : "기입 저장"}</button>
