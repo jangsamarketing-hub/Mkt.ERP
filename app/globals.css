@@ -3304,6 +3304,13 @@ a {
   gap: 10px;
 }
 
+.daily-entry-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+
 .task-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;

@@ -18,6 +18,7 @@ type WorkUpdate = {
 };
 
 type TaskWithStore = WorkUpdate & { storeId: string; storeName: string; managerName: string };
+type EntryFilter = "all" | "missing" | "written";
 
 function seoulDate() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -43,6 +44,7 @@ export function DailyTasksPage({ stores: fallbackStores }: { stores: StoreRow[];
   const storeIds = stores.map((store) => store.id).join(",");
   const [selectedDate, setSelectedDate] = useState(seoulDate);
   const [managerFilter, setManagerFilter] = useState("all");
+  const [entryFilter, setEntryFilter] = useState<EntryFilter>("missing");
   const [updates, setUpdates] = useState<TaskWithStore[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [memo, setMemo] = useState("");
@@ -101,13 +103,17 @@ export function DailyTasksPage({ stores: fallbackStores }: { stores: StoreRow[];
       && (managerFilter === "all" || task.managerName === managerFilter)),
     [updates, selectedDate, managerFilter],
   );
-  const grouped = useMemo(() => {
-    const map = new Map<string, TaskWithStore[]>();
-    for (const task of todayTasks) map.set(task.storeId, [...(map.get(task.storeId) ?? []), task]);
-    return [...map.entries()].map(([storeId, tasks]) => ({ storeId, tasks }));
-  }, [todayTasks]);
   const enteredCount = todayTasks.filter(hasEntry).length;
   const missingCount = todayTasks.length - enteredCount;
+  const visibleTasks = useMemo(() => todayTasks.filter((task) => {
+    if (entryFilter === "all") return true;
+    return entryFilter === "written" ? hasEntry(task) : !hasEntry(task);
+  }), [entryFilter, todayTasks]);
+  const grouped = useMemo(() => {
+    const map = new Map<string, TaskWithStore[]>();
+    for (const task of visibleTasks) map.set(task.storeId, [...(map.get(task.storeId) ?? []), task]);
+    return [...map.entries()].map(([storeId, tasks]) => ({ storeId, tasks }));
+  }, [visibleTasks]);
   const selectedTask = todayTasks.find((task) => task.id === selectedId) ?? null;
 
   useEffect(() => {
@@ -197,6 +203,12 @@ export function DailyTasksPage({ stores: fallbackStores }: { stores: StoreRow[];
             <input aria-label="업무 날짜" type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} />
             <button className="btn btn-light" disabled={loading} onClick={() => void loadTasks()} type="button">{loading ? "불러오는 중" : "새로고침"}</button>
           </div>
+        </div>
+        <div className="daily-entry-filters" aria-label="업무 기입 상태 필터">
+          <button className={`btn ${entryFilter === "missing" ? "btn-primary" : "btn-light"}`} onClick={() => setEntryFilter("missing")} type="button">미기입 {missingCount}개</button>
+          <button className={`btn ${entryFilter === "written" ? "btn-primary" : "btn-light"}`} onClick={() => setEntryFilter("written")} type="button">기입완료 {enteredCount}개</button>
+          <button className={`btn ${entryFilter === "all" ? "btn-primary" : "btn-light"}`} onClick={() => setEntryFilter("all")} type="button">전체 {todayTasks.length}개</button>
+          <button className="btn btn-light" onClick={() => setSelectedDate(seoulDate())} type="button">오늘로</button>
         </div>
         <div className="task-summary-grid">
           <div className="metric-card"><span>오늘 예정 업무</span><strong>{todayTasks.length}개</strong></div>
