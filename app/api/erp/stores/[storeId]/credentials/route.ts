@@ -60,7 +60,8 @@ export async function PUT(request: Request, context: RouteContext) {
     if (!isCredentialKind(kind) || !secret) {
       return NextResponse.json({ error: "저장할 계정 종류와 비밀번호 또는 Secret Key가 필요합니다." }, { status: 400 });
     }
-    const { error } = await getSupabaseAdmin().from("erp_store_external_credentials").upsert({
+    const supabase = getSupabaseAdmin();
+    const { error } = await supabase.from("erp_store_external_credentials").upsert({
       store_id: storeId,
       credential_kind: kind,
       username: username || null,
@@ -68,6 +69,15 @@ export async function PUT(request: Request, context: RouteContext) {
       secret_last4: secretLast4(secret),
     }, { onConflict: "store_id,credential_kind" });
     if (error) throw error;
+    if (kind === "searchad_api") {
+      const { error: configError } = await supabase.from("erp_searchad_sync_configs").upsert({
+        store_id: storeId,
+        enabled: true,
+        daily_sync_times: ["10:00:00", "17:00:00"],
+        timezone: "Asia/Seoul",
+      }, { onConflict: "store_id" });
+      if (configError) throw configError;
+    }
     return NextResponse.json({ saved: true, configured: true, last4: secretLast4(secret) });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Credential save failed" }, { status: 503 });

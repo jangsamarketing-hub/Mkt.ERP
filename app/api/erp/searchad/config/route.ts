@@ -2,12 +2,7 @@ import { NextResponse } from "next/server";
 import { authenticateRequest, authFailureResponse } from "@/lib/auth/request";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
-function validTimes(value: unknown) {
-  if (!Array.isArray(value) || value.length < 1 || value.length > 3) throw new Error("dailySyncTimes must contain 1 to 3 times");
-  const times = Array.from(new Set(value.map((item) => String(item).trim()))).sort();
-  if (times.some((time) => !/^([01]\d|2[0-3]):[0-5]\d$/.test(time))) throw new Error("dailySyncTimes must use HH:MM");
-  return times.map((time) => `${time}:00`);
-}
+const FIXED_DAILY_SYNC_TIMES = ["10:00:00", "17:00:00"];
 
 export async function PUT(request: Request) {
   const auth = authenticateRequest(request, { roles: ["admin"] });
@@ -16,12 +11,11 @@ export async function PUT(request: Request) {
     const body = await request.json() as Record<string, unknown>;
     const storeId = String(body.storeId ?? "").trim();
     if (!storeId) throw new Error("storeId is required");
-    const dailySyncTimes = validTimes(body.dailySyncTimes);
     const enabled = Boolean(body.enabled);
     const { data, error } = await getSupabaseAdmin().from("erp_searchad_sync_configs").upsert({
       store_id: storeId,
       enabled,
-      daily_sync_times: dailySyncTimes,
+      daily_sync_times: FIXED_DAILY_SYNC_TIMES,
       timezone: "Asia/Seoul",
     }, { onConflict: "store_id" }).select("enabled,daily_sync_times,timezone,updated_at").single();
     if (error) throw error;

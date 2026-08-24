@@ -65,8 +65,8 @@ export function BalanceMonitorPage() {
 
       <section className="notice-card">{message}</section>
       <section className="balance-guide" aria-label="잔액 경고 기준">
-        <span className="balance-dot critical" /> 50,000원 이하 즉시 경고
-        <span className="balance-dot warning" /> 100,000원 이하 주의
+        <span className="balance-dot critical" /> 50,000원 미만 · 이메일 경고
+        <span className="balance-dot warning" /> 50,000원~100,000원 · 충전 준비
         <span className="balance-dot normal" /> 100,000원 초과 정상
       </section>
 

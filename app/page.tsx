@@ -35,7 +35,17 @@ type StoreRow = {
   name: string;
   manager: string;
   bizMoney: number | null;
+  bizMoneyStatus?: string;
   bizMoneyUpdatedAt?: string | null;
+  searchAdStatDate?: string | null;
+  searchAdImpressions?: number | null;
+  searchAdClicks?: number | null;
+  searchAdCtr?: number | null;
+  searchAdSpend?: number | null;
+  searchAdAverageCpc?: number | null;
+  searchAdConversions?: number | null;
+  searchAdCampaignCount?: number | null;
+  searchAdActiveCampaignCount?: number | null;
   naverInflow: number | null;
   sales: number | null;
   previous: {
@@ -353,7 +363,17 @@ type DashboardPlaceStore = {
   currentTaskProgress: number | null;
   previousTaskProgress: number | null;
   bizMoney: number | null;
+  bizMoneyStatus?: string;
   bizMoneyUpdatedAt?: string | null;
+  searchAdStatDate?: string | null;
+  searchAdImpressions?: number | null;
+  searchAdClicks?: number | null;
+  searchAdCtr?: number | null;
+  searchAdSpend?: number | null;
+  searchAdAverageCpc?: number | null;
+  searchAdConversions?: number | null;
+  searchAdCampaignCount?: number | null;
+  searchAdActiveCampaignCount?: number | null;
 };
 
 type GoldenKeywordJob = {
@@ -553,7 +573,23 @@ function getStoreSignal(store: StoreRow): Signal {
 
 function getBalanceSignal(value: number | null): Signal {
   if (value === null) return "gray";
-  return value <= 100000 ? "red" : "blue";
+  if (value < 50_000) return "red";
+  if (value <= 100_000) return "yellow";
+  return "green";
+}
+
+function getBalanceLevel(value: number | null, status?: string) {
+  if (value === null || (status && status !== "available")) return { className: "unavailable", label: "미연결 또는 수집 오류" };
+  if (value < 50_000) return { className: "critical", label: "5만원 미만 · 이메일 경고" };
+  if (value <= 100_000) return { className: "warning", label: "충전 준비" };
+  return { className: "normal", label: "정상" };
+}
+
+function signalLabel(signal: Signal) {
+  if (signal === "gray") return "데이터 없음";
+  if (signal === "blue" || signal === "green") return "정상";
+  if (signal === "yellow") return "주의";
+  return "위험";
 }
 
 function SignalDots({ store }: { store: StoreRow }) {
@@ -563,11 +599,11 @@ function SignalDots({ store }: { store: StoreRow }) {
     ["매출", getDashboardSignal(store.sales, store.previous.sales, store.weeklySales ?? [])],
     ["기입", getDashboardSignal(store.currentTaskProgress ?? null, store.previousTaskProgress ?? null, store.weeklyTasksRaw ?? [])],
   ] as const;
-  const label = signals.map(([name, signal]) => `${name} ${signal === "gray" ? "데이터 없음" : signal === "blue" ? "정상" : signal === "yellow" ? "하락" : "주의"}`).join(", ");
+  const label = signals.map(([name, signal]) => `${name} ${signalLabel(signal)}`).join(", ");
   return (
     <span aria-label={label} className="dashboard-signal-dots">
       {signals.map(([name, signal]) => (
-        <span className="dashboard-signal-dot" key={name} title={`${name}: ${signal === "gray" ? "데이터 없음" : signal === "blue" ? "정상" : signal === "yellow" ? "하락" : "주의"}`}>
+        <span className="dashboard-signal-dot" key={name} title={`${name}: ${signalLabel(signal)}`}>
           <i className={`dot ${signal}`} />
           <small>{name}</small>
         </span>
@@ -1221,6 +1257,15 @@ function metricRate(current: number | null, previous: number | null) {
   return ((current - previous) / previous) * 100;
 }
 
+function todayInSeoul() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
 function Dashboard({
   setView,
   rows = stores,
@@ -1237,8 +1282,8 @@ function Dashboard({
   importStatus?: string;
 }) {
   const { selectStore } = useStoreRegistry();
-  const [selectedDate, setSelectedDate] = useState("2026-07-12");
-  const [appliedDate, setAppliedDate] = useState("2026-07-12");
+  const [selectedDate, setSelectedDate] = useState(todayInSeoul);
+  const [appliedDate, setAppliedDate] = useState(todayInSeoul);
   const [selectedGranularity, setSelectedGranularity] = useState<DashboardGranularity>("week");
   const [appliedGranularity, setAppliedGranularity] = useState<DashboardGranularity>("week");
   const [searchTerm, setSearchTerm] = useState("");
@@ -1302,7 +1347,17 @@ function Dashboard({
         name: placeStore.name,
         manager: placeStore.managerName || base?.manager || "미배정",
         bizMoney: placeStore.bizMoney,
+        bizMoneyStatus: placeStore.bizMoneyStatus,
         bizMoneyUpdatedAt: placeStore.bizMoneyUpdatedAt ?? null,
+        searchAdStatDate: placeStore.searchAdStatDate ?? null,
+        searchAdImpressions: placeStore.searchAdImpressions ?? null,
+        searchAdClicks: placeStore.searchAdClicks ?? null,
+        searchAdCtr: placeStore.searchAdCtr ?? null,
+        searchAdSpend: placeStore.searchAdSpend ?? null,
+        searchAdAverageCpc: placeStore.searchAdAverageCpc ?? null,
+        searchAdConversions: placeStore.searchAdConversions ?? null,
+        searchAdCampaignCount: placeStore.searchAdCampaignCount ?? null,
+        searchAdActiveCampaignCount: placeStore.searchAdActiveCampaignCount ?? null,
         naverInflow: placeStore.currentInflow,
         sales: placeStore.currentSales,
         previous: {
@@ -1373,9 +1428,13 @@ function Dashboard({
     <>
       <PageHeader
         title="매장 운영 대시보드"
-        description="비즈머니·네이버 유입·매출 신호등과 4주 유입량, 주간 업무 현황을 빠르게 봅니다."
+        description="매장별 비즈머니와 최신 검색광고 성과, 네이버 유입, 매출, 업무 현황을 한 줄에서 확인합니다."
         actions={
           <div className="filter-row top-actions">
+            <a className="btn btn-light" href="/balance-monitor">
+              <Wallet size={16} />
+              잔액 경고 모니터
+            </a>
             <label className="btn btn-light file-action-button">
               <Download size={16} />
               엑셀 업체등록
@@ -1439,6 +1498,9 @@ function Dashboard({
         <span className="applied-date">적용 기준일 {appliedDate} · {appliedGranularity === "day" ? "일" : appliedGranularity === "week" ? "주" : "월"} 단위</span>
         {importStatus && <span className="applied-date">{importStatus}</span>}
         <div className="legend">
+          <span><i className="dot red" /> 잔액 5만원 미만</span>
+          <span><i className="dot yellow" /> 잔액 5만~10만원</span>
+          <span><i className="dot green" /> 잔액 10만원 초과</span>
           <span>
             <i className="dot blue" /> 상승/유지
           </span>
@@ -1466,6 +1528,11 @@ function Dashboard({
               <th><button className="table-sort" onClick={() => toggleSort("store")} type="button">업체명 {sortArrow("store")}</button></th>
               <th><button className="table-sort" onClick={() => toggleSort("manager")} type="button">담당자 {sortArrow("manager")}</button></th>
               <th><button className="table-sort" onClick={() => toggleSort("bizMoney")} type="button">비즈머니 {sortArrow("bizMoney")}</button></th>
+              <th>광고 노출</th>
+              <th>클릭</th>
+              <th>CTR</th>
+              <th>광고비</th>
+              <th>평균 CPC</th>
               <th><button className="table-sort" onClick={() => toggleSort("inflow")} type="button">네이버 유입 / 최근 4{appliedGranularity === "day" ? "일" : appliedGranularity === "week" ? "주" : "개월"} {sortArrow("inflow")}</button></th>
               <th><button className="table-sort" onClick={() => toggleSort("sales")} type="button">매출 {sortArrow("sales")}</button></th>
               <th>업무현황</th>
@@ -1482,9 +1549,16 @@ function Dashboard({
                   </span>
                 </td>
                 <td>
-                  <button className="text-link" onClick={() => openStoreView(store.id, "store")} type="button">
-                    {store.name}
-                  </button>
+                  <span className="store-name-with-balance-light">
+                    <i
+                      aria-label={`비즈머니 ${getBalanceLevel(store.bizMoney, store.bizMoneyStatus).label}`}
+                      className={`balance-dot ${getBalanceLevel(store.bizMoney, store.bizMoneyStatus).className}`}
+                      title={`비즈머니: ${getBalanceLevel(store.bizMoney, store.bizMoneyStatus).label}`}
+                    />
+                    <button className="text-link" onClick={() => openStoreView(store.id, "store")} type="button">
+                      {store.name}
+                    </button>
+                  </span>
                 </td>
                 <td className="manager">{store.manager}</td>
                 <td>
@@ -1497,6 +1571,11 @@ function Dashboard({
                     onClick={() => openStoreView(store.id, "ad")}
                   />
                 </td>
+                <td className="searchad-metric"><strong>{formatNumber(store.searchAdImpressions ?? null)}</strong><small>{store.searchAdStatDate ?? "미수집"}</small></td>
+                <td className="searchad-metric"><strong>{formatNumber(store.searchAdClicks ?? null)}</strong><small>클릭</small></td>
+                <td className="searchad-metric"><strong>{store.searchAdCtr === null || store.searchAdCtr === undefined ? "데이터 없음" : `${store.searchAdCtr.toFixed(2)}%`}</strong><small>클릭률</small></td>
+                <td className="searchad-metric"><strong>{formatNumber(store.searchAdSpend ?? null, "원")}</strong><small>최근 수집일</small></td>
+                <td className="searchad-metric"><strong>{formatNumber(store.searchAdAverageCpc ?? null, "원")}</strong><small>CPC</small></td>
                 <td>
                   <div className="inflow-combo">
                     <SignalButton
@@ -1557,7 +1636,7 @@ function AdPage() {
   const [status, setStatus] = useState("");
   const [syncing, setSyncing] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
-  const [dailyTimes, setDailyTimes] = useState("11:00");
+  const [dailyTimes, setDailyTimes] = useState("10:00, 17:00");
 
   const load = async () => {
     if (!selectedStoreId) return;
@@ -1567,7 +1646,7 @@ function AdPage() {
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "검색광고 데이터를 불러오지 못했습니다.");
       setData(payload);
-      setDailyTimes((payload.config?.daily_sync_times ?? ["11:00:00"]).map((time: string) => time.slice(0, 5)).join(", "));
+      setDailyTimes((payload.config?.daily_sync_times ?? ["10:00:00", "17:00:00"]).map((time: string) => time.slice(0, 5)).join(", "));
       setStatus(payload.campaigns?.length ? "저장된 읽기 전용 성과 데이터입니다." : "Customer ID 연결 후 수동 갱신 또는 다음 자동 수집에서 데이터가 표시됩니다.");
     } catch (error) {
       setData(null);
@@ -1579,10 +1658,9 @@ function AdPage() {
 
   const saveConfig = async () => {
     if (!selectedStoreId) return;
-    const times = dailyTimes.split(",").map((time) => time.trim()).filter(Boolean);
     setSavingConfig(true);
     try {
-      const response = await fetch("/api/erp/searchad/config", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ storeId: selectedStoreId, enabled: true, dailySyncTimes: times }) });
+      const response = await fetch("/api/erp/searchad/config", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ storeId: selectedStoreId, enabled: true }) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "자동 수집 설정 저장에 실패했습니다.");
       setStatus(`자동 수집 시간 저장: ${(payload.config.daily_sync_times ?? []).map((time: string) => time.slice(0, 5)).join(", ")} (한국 시간)`);
@@ -1619,13 +1697,13 @@ function AdPage() {
         <div className="section-headline">
           <div>
             <h2>{selectedStore?.name ?? "매장 선택 필요"} · 읽기 전용 수집</h2>
-            <p className="plain-text">현재 자동 수집은 매일 오전 11시(한국시간)에 실행됩니다. 마지막 갱신: {formatUpdatedAt(data?.latestSnapshot?.captured_at)} · 오후 5시 자동 갱신은 별도 스케줄러 연결 후 활성화됩니다.</p>
+            <p className="plain-text">자동 수집은 매일 오전 10시와 오후 5시(한국시간)에 실행됩니다. 마지막 갱신: {formatUpdatedAt(data?.latestSnapshot?.captured_at)}</p>
           </div>
           <button className="btn btn-primary" disabled={!selectedStoreId || syncing} onClick={syncNow} type="button">{syncing ? "수집 중" : "지금 읽기 전용 갱신"}</button>
         </div>
         <div className="filter-row">
-          <label className="store-field"><span>자동 수집 시간 (한국시간, 현재 하루 1회)</span><input value={dailyTimes} onChange={(event) => setDailyTimes(event.target.value)} placeholder="11:00" /></label>
-          <button className="btn btn-light" disabled={!selectedStoreId || savingConfig} onClick={saveConfig} type="button">{savingConfig ? "저장 중" : "자동 수집 설정 저장"}</button>
+          <label className="store-field"><span>자동 수집 시간 (한국시간)</span><input readOnly value={dailyTimes} /></label>
+          <button className="btn btn-light" disabled={!selectedStoreId || savingConfig} onClick={saveConfig} type="button">{savingConfig ? "설정 중" : "하루 2회 자동 수집 켜기"}</button>
         </div>
         {status && <p className="plain-text">{status}</p>}
       </section>

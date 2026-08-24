@@ -20,7 +20,17 @@ type WorkUpdateRow = {
   evidence_urls: unknown;
 };
 
+type SearchAdStatRow = {
+  store_id: string;
+  stat_date: string;
+  impressions: number | string | null;
+  clicks: number | string | null;
+  ad_spend: number | string | null;
+  conversions: number | string | null;
+};
+
 function numberOrNull(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
   const numeric = typeof value === "number" ? value : Number(value);
   return Number.isFinite(numeric) ? numeric : null;
 }
@@ -91,7 +101,7 @@ export async function GET(request: Request) {
     const storeResult = await storesQuery;
     if (storeResult.error) throw storeResult.error;
     await ensureCurrentWorkPlans(storeResult.data ?? []);
-    const [csvResult, jsonResult, salesResult, searchAdSnapshotResult, workUpdateResult] = await Promise.all([
+    const [csvResult, jsonResult, salesResult, searchAdSnapshotResult, searchAdStatsResult, workUpdateResult] = await Promise.all([
       supabase
         .from("erp_place_csv_uploads")
         .select("store_id,period_start,period_end,summary,uploaded_at")
@@ -111,17 +121,20 @@ export async function GET(request: Request) {
         .lte("transaction_date", overallEnd),
       supabase
         .from("erp_searchad_account_snapshots")
-        .select("store_id,captured_at,biz_money_balance,balance_status")
-        .eq("balance_status", "available")
-        .not("biz_money_balance", "is", null)
+        .select("store_id,captured_at,biz_money_balance,balance_status,campaign_count,active_campaign_count")
         .order("captured_at", { ascending: false }),
+      supabase
+        .from("erp_searchad_campaign_daily_stats")
+        .select("store_id,stat_date,impressions,clicks,ad_spend,conversions")
+        .order("stat_date", { ascending: false })
+        .limit(20000),
       supabase
         .from("erp_store_work_updates")
         .select("store_id,task_date,evidence_text,evidence_urls")
         .gte("task_date", overallStart)
         .lte("task_date", overallEnd),
     ]);
-    const firstError = csvResult.error ?? jsonResult.error ?? salesResult.error ?? searchAdSnapshotResult.error ?? workUpdateResult.error;
+    const firstError = csvResult.error ?? jsonResult.error ?? salesResult.error ?? searchAdSnapshotResult.error ?? searchAdStatsResult.error ?? workUpdateResult.error;
     if (firstError) throw firstError;
 
     const csvSnapshots: PlaceSnapshot[] = (csvResult.data ?? []).map((upload) => {
@@ -156,9 +169,37 @@ export async function GET(request: Request) {
     const snapshots: PlaceSnapshot[] = [...csvSnapshots, ...jsonSnapshots.filter((snapshot): snapshot is Exclude<typeof snapshot, null> => Boolean(snapshot))];
     const salesRows = salesResult.data ?? [];
     const workUpdates = (workUpdateResult.data ?? []) as WorkUpdateRow[];
-    const latestBalanceByStore = new Map<string, { balance: number; capturedAt: string }>();
+    const latestBalanceByStore = new Map<string, {
+      balance: number | null;
+      status: string;
+      capturedAt: string;
+      campaignCount: number;
+      activeCampaignCount: number;
+    }>();
     for (const snapshot of searchAdSnapshotResult.data ?? []) {
-      if (!latestBalanceByStore.has(snapshot.store_id)) latestBalanceByStore.set(snapshot.store_id, { balance: Number(snapshot.biz_money_balance), capturedAt: snapshot.captured_at });
+      if (!latestBalanceByStore.has(snapshot.store_id)) {
+        latestBalanceByStore.set(snapshot.store_id, {
+          balance: snapshot.balance_status === "available" ? numberOrNull(snapshot.biz_money_balance) : null,
+          status: snapshot.balance_status,
+          capturedAt: snapshot.captured_at,
+          campaignCount: Number(snapshot.campaign_count ?? 0),
+          activeCampaignCount: Number(snapshot.active_campaign_count ?? 0),
+        });
+      }
+    }
+
+    const latestSearchAdDateByStore = new Map<string, string>();
+    const latestSearchAdStatsByStore = new Map<string, { impressions: number; clicks: number; adSpend: number; conversions: number }>();
+    for (const row of (searchAdStatsResult.data ?? []) as SearchAdStatRow[]) {
+      const latestDate = latestSearchAdDateByStore.get(row.store_id);
+      if (latestDate && row.stat_date !== latestDate) continue;
+      if (!latestDate) latestSearchAdDateByStore.set(row.store_id, row.stat_date);
+      const current = latestSearchAdStatsByStore.get(row.store_id) ?? { impressions: 0, clicks: 0, adSpend: 0, conversions: 0 };
+      current.impressions += numberOrNull(row.impressions) ?? 0;
+      current.clicks += numberOrNull(row.clicks) ?? 0;
+      current.adSpend += numberOrNull(row.ad_spend) ?? 0;
+      current.conversions += numberOrNull(row.conversions) ?? 0;
+      latestSearchAdStatsByStore.set(row.store_id, current);
     }
 
     const stores = (storeResult.data ?? []).map((store) => {
@@ -180,6 +221,8 @@ export async function GET(request: Request) {
         return Math.round((writtenCount / bucketUpdates.length) * 100);
       });
 
+      const searchAdSnapshot = latestBalanceByStore.get(store.id);
+      const searchAdStats = latestSearchAdStatsByStore.get(store.id);
       return {
         id: store.id,
         name: store.name,
@@ -196,8 +239,18 @@ export async function GET(request: Request) {
         taskBuckets,
         currentTaskProgress: taskBuckets.at(-1) ?? null,
         previousTaskProgress: taskBuckets.at(-2) ?? null,
-        bizMoney: latestBalanceByStore.get(store.id)?.balance ?? null,
-        bizMoneyUpdatedAt: latestBalanceByStore.get(store.id)?.capturedAt ?? null,
+        bizMoney: searchAdSnapshot?.balance ?? null,
+        bizMoneyStatus: searchAdSnapshot?.status ?? "unavailable",
+        bizMoneyUpdatedAt: searchAdSnapshot?.capturedAt ?? null,
+        searchAdStatDate: latestSearchAdDateByStore.get(store.id) ?? null,
+        searchAdImpressions: searchAdStats?.impressions ?? null,
+        searchAdClicks: searchAdStats?.clicks ?? null,
+        searchAdCtr: searchAdStats && searchAdStats.impressions > 0 ? (searchAdStats.clicks / searchAdStats.impressions) * 100 : null,
+        searchAdSpend: searchAdStats?.adSpend ?? null,
+        searchAdAverageCpc: searchAdStats && searchAdStats.clicks > 0 ? searchAdStats.adSpend / searchAdStats.clicks : null,
+        searchAdConversions: searchAdStats?.conversions ?? null,
+        searchAdCampaignCount: searchAdSnapshot?.campaignCount ?? null,
+        searchAdActiveCampaignCount: searchAdSnapshot?.activeCampaignCount ?? null,
       };
     });
 

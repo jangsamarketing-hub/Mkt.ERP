@@ -454,7 +454,7 @@ a {
 }
 
 .ops-table.prototype-table {
-  min-width: 1180px;
+  min-width: 1740px;
 }
 
 .ops-table th {
@@ -552,7 +552,7 @@ a {
 }
 
 .dot.green {
-  background: #2563eb;
+  background: var(--green);
 }
 
 .dot.red {
@@ -572,6 +572,40 @@ a {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+}
+
+.store-name-with-balance-light {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 170px;
+}
+
+.store-name-with-balance-light .balance-dot {
+  flex: 0 0 auto;
+  margin-right: 0;
+  box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.14);
+}
+
+.searchad-metric {
+  min-width: 84px;
+  white-space: nowrap;
+}
+
+.searchad-metric strong,
+.searchad-metric small {
+  display: block;
+}
+
+.searchad-metric strong {
+  color: #17345e;
+  font-size: 13px;
+}
+
+.searchad-metric small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 10px;
 }
 
 .dashboard-signal-dots {
@@ -3642,7 +3676,7 @@ a {
 .balance-dot { width: 10px; height: 10px; display: inline-block; border-radius: 999px; margin-right: 5px; }
 .balance-dot.critical { background: #dc2626; }
 .balance-dot.warning { background: #f59e0b; }
-.balance-dot.normal { background: #2563eb; }
+.balance-dot.normal { background: #16a34a; }
 .balance-dot.unavailable { background: #94a3b8; }
 .balance-list { display: grid; gap: 12px; }
 .balance-item { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 18px; align-items: center; padding: 18px; border: 1px solid #d8e4f3; border-radius: 14px; background: #fff; }
